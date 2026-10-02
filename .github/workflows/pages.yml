@@ -1,0 +1,60 @@
+name: Sync from Drive and publish
+
+# Manual only: the site is hosted on the NAS (see nas/README.md). To publish on GitHub Pages
+# instead, add back:  push: { branches: [main] }  and  schedule: [{ cron: "17 * * * *" }]
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # commit data/updates.json (the revision log behind "Latest updates")
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Pull chapters and wiki from Google Drive
+        run: npm run sync
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Build site
+        run: npm run build
+        env:
+          AUTHOR_PASSWORD: ${{ secrets.AUTHOR_PASSWORD }}
+
+      - name: Save revision log
+        run: |
+          if ! git diff --quiet -- data/updates.json || [ -n "$(git ls-files --others -- data/updates.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/updates.json
+            git commit -m "Record chapter updates from Drive"
+            git push
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
