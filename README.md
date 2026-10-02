@@ -72,6 +72,9 @@ To run the site on your own NAS, visible only on your Tailscale network, follow
 
 ## One-time setup (GitHub Pages)
 
+The workflow in `.github/workflows/pages.yml` is manual-only right now, because the site runs on the NAS.
+To use GitHub Pages instead, restore its `push` and hourly `schedule` triggers (see the comment in that file).
+
 ### 1. Let the Action read your Drive folder
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/), create a project (any name).
