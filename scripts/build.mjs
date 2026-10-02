@@ -7,7 +7,7 @@ import { loadContent, isReaderPage, stripAuthorNotes, sha256 } from "../lib/cont
 import { escapeHtml as esc, renderMarkdown } from "../lib/markdown.mjs";
 import { deriveKey, encrypt, KDF_ITERATIONS } from "../lib/vault.mjs";
 
-const OUT = "_site";
+const OUT = process.env.OUT_DIR || "_site";
 const CONTENT = process.env.CONTENT_DIR || "content";
 const UPDATES = process.env.UPDATES_FILE || "data/updates.json";
 const config = JSON.parse(readFileSync("site.config.json", "utf8"));
@@ -378,7 +378,7 @@ function loginPage(check) {
     <label class="check"><input type="checkbox" id="remember" checked> Keep me signed in on this device</label>
     <button class="btn btn-primary" type="submit" id="login-submit">Sign in</button>
     <p class="login-error" id="login-error" role="alert" hidden>That password didn't work.</p>`
-        : `<p class="login-error">The author area isn't set up yet: add an AUTHOR_PASSWORD secret to the repository.</p>`
+        : `<p class="login-error">The author area isn't set up yet: set AUTHOR_PASSWORD (a GitHub secret, or the .env file on the NAS).</p>`
     }
   </form>
 </main>`;

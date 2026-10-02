@@ -33,7 +33,13 @@ read even by opening them directly. The browser remembers the key until you sign
 All of these rules live in `site.config.json`: which sections are public, which headings to strip, which
 statuses to hide, and files to exclude (e.g. `Interlude_-_Seven_Hundred_And_Forty-Three.md`, which became Ch. 42).
 
-## One-time setup
+## Hosting on a Synology NAS instead
+
+To run the site on your own NAS, visible only on your Tailscale network, follow
+[nas/README.md](nas/README.md). It replaces GitHub Pages and the secrets below with a
+`settings.env` file on the NAS.
+
+## One-time setup (GitHub Pages)
 
 ### 1. Let the Action read your Drive folder
 

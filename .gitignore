@@ -1,3 +1,9 @@
 _site/
 content/
 node_modules/
+
+# NAS deployment (see nas/README.md)
+settings.env
+secrets/
+public/
+tailscale-state/

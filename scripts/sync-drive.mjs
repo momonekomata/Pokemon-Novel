@@ -1,6 +1,7 @@
 // Mirrors the novel's Google Drive folder into content/ so the build can read it.
 //
-// Needs GOOGLE_SERVICE_ACCOUNT_JSON (the service account's key file contents).
+// Needs GOOGLE_SERVICE_ACCOUNT_JSON (the service account's key file contents),
+// or GOOGLE_SERVICE_ACCOUNT_FILE (a path to that key file).
 // The Drive folder must be shared with that service account's email address.
 // Pulls the Markdown files at the folder root plus everything under the wiki folder;
 // writes content/.drive-meta.json with each file's Drive timestamps.
@@ -15,8 +16,9 @@ const API = "https://www.googleapis.com/drive/v3";
 const b64url = (data) => Buffer.from(data).toString("base64url");
 
 async function accessToken() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not set.");
+  const file = process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || (file && readFileSync(file, "utf8"));
+  if (!raw) throw new Error("Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_FILE.");
   const key = JSON.parse(raw);
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
