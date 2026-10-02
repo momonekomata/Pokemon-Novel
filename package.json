@@ -9,5 +9,8 @@
   },
   "dependencies": {
     "marked": "^18.0.14"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.35.5"
   }
 }

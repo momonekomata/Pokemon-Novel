@@ -572,11 +572,48 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .login-error { margin: 0; font-size: 14px; color: var(--accent); }
 .login-error[hidden] { display: none; }
 
+/* ---------- Illustrations (light-novel plates between paragraphs) ---------- */
+.illust { margin: 2.6em 0; text-align: center; }
+.illust-link { display: block; cursor: zoom-in; }
+.illust img {
+  display: block;
+  max-width: 100%;
+  max-height: 88vh;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 8px 28px rgb(0 0 0 / .08);
+}
+.illust figcaption {
+  margin-top: .9em;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+:root[data-illust="hide"] .illust { display: none; }
+.prose img:not(.illust img), .wiki-body img:not(.illust img) { max-width: 100%; height: auto; vertical-align: middle; }
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(10 10 12 / .92);
+  cursor: zoom-out;
+  animation: fade-in .15s ease;
+}
+.lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 2px; }
+@keyframes fade-in { from { opacity: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
 }
 
 @media print {
   .topbar, .chapter-nav { display: none; }
+  .illust img { box-shadow: none; }
   body { background: #fff; color: #000; }
 }

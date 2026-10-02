@@ -33,6 +33,35 @@ read even by opening them directly. The browser remembers the key until you sign
 All of these rules live in `site.config.json`: which sections are public, which headings to strip, which
 statuses to hide, and files to exclude (e.g. `Interlude_-_Seven_Hundred_And_Forty-Three.md`, which became Ch. 42).
 
+## Adding illustrations
+
+Light-novel style: each picture appears as a full-width plate between paragraphs, wherever you put it.
+
+1. In the Drive folder *Pokemon Novel - Reference Files and Chapters*, make a folder called **illustrations**
+   (once) and put your pictures in it: JPG, PNG, WebP or GIF, any size.
+2. In the chapter, on **its own line** with a blank line before and after, write either:
+
+   ```markdown
+   ![[ch01-sakura-evolves.png]]
+   ```
+   (Obsidian style: drag the image into the note in Obsidian and it writes this for you), or
+   ```markdown
+   ![Sakura mid-evolution, ribbons everywhere](illustrations/ch01-sakura-evolves.png "Optional caption under the picture")
+   ```
+   The text in `[ ]` describes the picture for screen readers. The quoted part is an optional caption.
+3. That's it. The next sync publishes it.
+
+Good to know:
+
+- The site finds a picture by its file name, so `![[name.png]]` works wherever in the folder it lives.
+- Big files are shrunk automatically (1400 px wide in the page, 2400 px when tapped), so phones load quickly.
+- Only pictures used in a published chapter or a public wiki page go public. Spare or spoiler art in
+  the folder stays private, and pictures on author-only wiki pages are published only in the author area.
+- Readers can tap a picture to see it full-screen, or switch illustrations off under the **T** (reading settings) button.
+- A misspelled file name doesn't break anything: the picture is skipped and the builder log says
+  `Image not found: …`.
+- Works the same in wiki pages, e.g. a character portrait at the top of a character's page.
+
 ## Hosting on a Synology NAS instead
 
 To run the site on your own NAS, visible only on your Tailscale network, follow
@@ -85,3 +114,4 @@ You can also point the build at any folder laid out like the Drive folder: `CONT
 - Remembers where each reader left off, with a "Continue" button on the home page
 - Previous/next chapter links, and ← / → keyboard shortcuts
 - Wiki filter box for finding a character or place quickly
+- Illustrations between paragraphs; tap to view full-screen, or switch them off

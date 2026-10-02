@@ -1,7 +1,7 @@
 // Builds the site into _site/ from content/ (mirrored from Google Drive by sync-drive.mjs).
 //   Reader tier: chapters, side stories, latest updates, and the character/world wiki.
 //   Author tier: the full wiki and reference files, encrypted with AUTHOR_PASSWORD.
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
 import { loadContent, isReaderPage, stripAuthorNotes, sha256 } from "../lib/content.mjs";
 import { escapeHtml as esc, renderMarkdown } from "../lib/markdown.mjs";
@@ -24,6 +24,88 @@ const wikiByPath = new Map(wiki.map((p) => [p.path, p]));
 const referenceByPath = new Map(reference.map((r) => [r.path, r]));
 const readerWiki = wiki.filter((p) => isReaderPage(p, config));
 const readerWikiPaths = new Set(readerWiki.map((p) => p.path));
+
+// ---------- Illustrations ----------
+// Images are found in content/ (Drive's illustrations folder, or next to the Markdown that uses them).
+// Only images actually used on a page are published; reader pages get them under images/, author-only
+// pages under author/i/. Names are hashed so file names in Drive (which may hint at spoilers) don't leak.
+
+let sharp = null;
+try {
+  sharp = (await import("sharp")).default;
+} catch {
+  console.warn("sharp not installed: illustrations are copied as-is, without resizing.");
+}
+const DISPLAY_WIDTH = 1400; // shown in the page (sharp on 2x phone screens at the text column width)
+const FULL_WIDTH = 2400; // opened on tap
+
+const IMAGE_RE = /\.(jpe?g|png|webp|gif|avif)$/i;
+const listImages = (dir, prefix = "") =>
+  readdirSync(join(CONTENT, dir), { withFileTypes: true }).flatMap((d) => {
+    const rel = prefix ? `${prefix}/${d.name}` : d.name;
+    if (d.isDirectory()) return listImages(join(dir, d.name), rel);
+    return IMAGE_RE.test(d.name) ? [rel] : [];
+  });
+const images = listImages("");
+const imageByName = new Map();
+for (const path of images) {
+  const key = posix.basename(path).toLowerCase();
+  if (!imageByName.has(key)) imageByName.set(key, path);
+}
+const imageMeta = new Map();
+if (sharp) {
+  for (const path of images) {
+    try {
+      const m = await sharp(join(CONTENT, path)).metadata();
+      const rotated = (m.orientation || 1) >= 5; // EXIF says the photo is turned sideways
+      imageMeta.set(path, { width: rotated ? m.height : m.width, height: rotated ? m.width : m.height });
+    } catch {
+      console.warn(`Couldn't read image ${path}; it will be copied as-is.`);
+    }
+  }
+}
+const imageJobs = new Map(); // output name -> { path, ext }
+const missingImages = new Set();
+
+function imageResolver(fromPath, base, tier) {
+  return (href) => {
+    if (!href) return null;
+    if (/^https?:/i.test(href)) return { src: href, full: href };
+    const rel = decodeURIComponent(href.split("#")[0]);
+    let path = posix.normalize(posix.join(posix.dirname(fromPath), rel));
+    if (!images.includes(path)) path = images.includes(rel) ? rel : imageByName.get(posix.basename(rel).toLowerCase());
+    if (!path) {
+      missingImages.add(`${fromPath} → ${href}`);
+      return null;
+    }
+    const resize = sharp && imageMeta.has(path) && !/\.gif$/i.test(path);
+    const ext = resize ? ".webp" : posix.extname(path).toLowerCase();
+    const name = `${tier === "author" ? "author/i" : "images"}/${sha256(`${config.authorTier.salt}:img:${path}`).slice(0, 16)}`;
+    imageJobs.set(name, { path, ext, resize });
+    const meta = imageMeta.get(path);
+    const width = meta && Math.min(meta.width, DISPLAY_WIDTH);
+    const height = meta && Math.round((meta.height * width) / meta.width);
+    return { src: `${base}${name}${ext}`, full: `${base}${name}-full${ext}`, width, height };
+  };
+}
+
+async function writeImages() {
+  for (const [name, { path, ext, resize }] of imageJobs) {
+    const src = join(CONTENT, path);
+    mkdirSync(dirname(join(OUT, name)), { recursive: true });
+    if (resize) {
+      const out = (file, width, quality) =>
+        sharp(src).rotate().resize({ width, withoutEnlargement: true }).webp({ quality }).toFile(join(OUT, file));
+      await out(`${name}${ext}`, DISPLAY_WIDTH, 82);
+      await out(`${name}-full${ext}`, FULL_WIDTH, 86);
+    } else {
+      copyFileSync(src, join(OUT, `${name}${ext}`));
+      copyFileSync(src, join(OUT, `${name}-full${ext}`));
+    }
+  }
+  for (const m of missingImages) console.warn(`Image not found: ${m}`);
+  return imageJobs.size;
+}
 
 // ---------- Latest updates (new chapters, and prose revisions detected by content hash) ----------
 
@@ -115,6 +197,13 @@ const settingsPanel = `
     </div>
   </div>
   <div class="setting">
+    <span class="setting-label">Illustrations</span>
+    <div class="seg" role="group" aria-label="Illustrations">
+      <button data-set="illust" data-value="show">Show</button>
+      <button data-set="illust" data-value="hide">Hide</button>
+    </div>
+  </div>
+  <div class="setting">
     <span class="setting-label">Width</span>
     <div class="seg" role="group" aria-label="Line width">
       <button data-set="width" data-value="narrow">Narrow</button>
@@ -165,6 +254,7 @@ ${robots ? `<meta name="robots" content="${robots}">\n` : ""}<meta name="theme-c
     if (p.theme && p.theme !== "auto") d.dataset.theme = p.theme;
     if (p.font) d.dataset.font = p.font;
     if (p.width) d.dataset.width = p.width;
+    if (p.illust) d.dataset.illust = p.illust;
     if (p.size) d.style.setProperty("--scale", p.size / 100);
   } catch (e) {}
 </script>
@@ -272,7 +362,7 @@ function chapterPage(c, prev, next) {
     <p class="chapter-meta">${c.minutes} min read</p>
   </header>
   <article class="prose">
-${renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader") })}
+${renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") })}
   </article>
   <nav class="chapter-nav" aria-label="Chapter navigation">
     ${navLink(prev, "prev") || "<span></span>"}
@@ -319,7 +409,7 @@ function wikiDirectory(pages, base, hrefFor, intro) {
 // Summaries are plain text on cards (links inside them would nest anchors).
 const renderInlineSummary = (s) => renderMarkdown(s, { link: () => null }).replace(/^<p>|<\/p>\s*$/g, "");
 
-function wikiBody(page, src, link) {
+function wikiBody(page, src, { link, image }) {
   const body = src.replace(/^#\s+.+\n?/m, "").replace(/^>\s+.+\n?/m, "");
   return `
   <header class="wiki-head">
@@ -327,7 +417,7 @@ function wikiBody(page, src, link) {
     ${page.summary ? `<p class="wiki-lede">${renderMarkdown(page.summary, { link }).replace(/^<p>|<\/p>\s*$/g, "")}</p>` : ""}
   </header>
   <article class="wiki-body">
-${renderMarkdown(body, { link })}
+${renderMarkdown(body, { link, image })}
   </article>
   <p class="wiki-updated">Last updated ${fmtDate(page.modified)}</p>`;
 }
@@ -337,7 +427,7 @@ function readerWikiPage(page) {
   const body = `
 <main class="wiki">
   <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Wiki</a><span aria-hidden="true">›</span><span>${esc(sectionTitle(page.section))}</span></nav>
-  ${wikiBody(page, stripAuthorNotes(page.src, config), linkResolver(page.path, base, "reader"))}
+  ${wikiBody(page, stripAuthorNotes(page.src, config), { link: linkResolver(page.path, base, "reader"), image: imageResolver(page.path, base, "reader") })}
 </main>`;
   return layout({ title: `${page.title} · ${config.title} wiki`, description: page.summary || page.title, base, body, bodyClass: "page-wiki", current: "wiki" });
 }
@@ -411,7 +501,7 @@ async function buildAuthorTier() {
   for (const page of all) {
     const base = "../../";
     const crumbs = `<nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Author area</a><span aria-hidden="true">›</span><span>${esc(sectionTitle(page.section === "reference" ? "Reference files" : page.section))}</span></nav>`;
-    const html = crumbs + wikiBody(page, page.src, linkResolver(page.path, base, "author"));
+    const html = crumbs + wikiBody(page, page.src, { link: linkResolver(page.path, base, "author"), image: imageResolver(page.path, base, "author") });
     write(`author/p/${authorId(page.path)}.html`, vaultShell(await seal(`${page.title} · Author`, html), base));
     count++;
   }
@@ -431,9 +521,10 @@ extras.forEach((c, i) => write(`${c.slug}.html`, chapterPage(c, extras[i - 1], e
 write("wiki/index.html", readerWikiIndex());
 readerWiki.forEach((p) => write(readerWikiUrl(p), readerWikiPage(p)));
 const authorPages = await buildAuthorTier();
+const imageCount = await writeImages();
 
 console.log(
   `Built ${main.length} chapters/interludes, ${extras.length} side stories, ` +
-    `${readerWiki.length} public wiki pages, ${authorPages} author pages into ${OUT}/` +
+    `${readerWiki.length} public wiki pages, ${authorPages} author pages, ${imageCount} illustrations into ${OUT}/` +
     (firstRun ? " (first run: update dates seeded from Drive)" : "")
 );

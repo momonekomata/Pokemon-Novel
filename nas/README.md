@@ -215,6 +215,7 @@ Look at the **builder** log first (Step 8). Find the line that says `FAILED` and
 | `Token request failed: 400` / `invalid_grant` | The key file is wrong or was deleted in Google Cloud | Make a new key (Step 1) and replace the file |
 | `Drive API … 404` or `Synced 0 Markdown files` | The Drive folder isn't shared with `web-reader@…` | In Drive, share the folder with that address as **Viewer** |
 | The page won't open at all | Your device isn't on Tailscale, or the NAS hasn't joined | Turn Tailscale on. In the Tailscale admin, check that **manyo** is listed and online. Check the **tailscale** container's log |
+| `Image not found: Chapter_… → name.png` | A chapter mentions a picture that isn't in Drive (or the name is spelled differently) | Check the file name in the chapter matches the picture in the **illustrations** folder exactly. The rest of the site still updates |
 | `Bind mount failed` … `does not exist` | A folder the containers need is missing | In File Station, inside `docker/manyo-site`, create the folder it names (`public` or `tailscale-state`), then **Build** again |
 | The **manyo** machine never shows up in Tailscale | The join code was wrong or already used up | Make a new auth key (Step 2b), put it in `settings.env`, delete the `tailscale-state` folder inside `docker/manyo-site`, then **Stop** and **Build** |
 | Certificate or "not secure" warning | HTTPS isn't enabled in Tailscale | Do Step 2a, wait a minute, reload |

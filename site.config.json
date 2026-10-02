@@ -6,7 +6,8 @@
   "lang": "en",
   "drive": {
     "folderId": "1q2gqaHN9QQJ5V1-lWrgh__np4ENZquH8",
-    "wikiFolder": "wiki"
+    "wikiFolder": "wiki",
+    "imageFolders": ["illustrations"]
   },
   "manuscript": {
     "chapterPattern": "^Chapter_(\\d+)(?:_(\\d+))?_-_",

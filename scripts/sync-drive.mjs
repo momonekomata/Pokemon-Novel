@@ -3,7 +3,8 @@
 // Needs GOOGLE_SERVICE_ACCOUNT_JSON (the service account's key file contents),
 // or GOOGLE_SERVICE_ACCOUNT_FILE (a path to that key file).
 // The Drive folder must be shared with that service account's email address.
-// Pulls the Markdown files at the folder root plus everything under the wiki folder;
+// Pulls the Markdown and image files at the folder root, plus everything under the wiki
+// and illustration folders;
 // writes content/.drive-meta.json with each file's Drive timestamps.
 import { createSign } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -75,21 +76,23 @@ async function listFolder(token, folderId) {
 }
 
 const FOLDER = "application/vnd.google-apps.folder";
-const isMarkdown = (f) => f.mimeType !== FOLDER && f.name.toLowerCase().endsWith(".md");
+const WANTED = /\.(md|jpe?g|png|webp|gif|avif)$/i;
+const isWanted = (f) => f.mimeType !== FOLDER && WANTED.test(f.name);
+const subfolders = new Set([config.drive.wikiFolder, ...(config.drive.imageFolders || [])]);
 
 async function walk(token, folderId, prefix, out) {
   for (const f of await listFolder(token, folderId)) {
     const path = prefix ? `${prefix}/${f.name}` : f.name;
     if (f.mimeType === FOLDER) await walk(token, f.id, path, out);
-    else if (isMarkdown(f)) out.push({ ...f, path });
+    else if (isWanted(f)) out.push({ ...f, path });
   }
 }
 
 const token = await accessToken();
 const files = [];
 for (const f of await listFolder(token, config.drive.folderId)) {
-  if (f.mimeType === FOLDER && f.name === config.drive.wikiFolder) await walk(token, f.id, f.name, files);
-  else if (isMarkdown(f)) files.push({ ...f, path: f.name });
+  if (f.mimeType === FOLDER && subfolders.has(f.name)) await walk(token, f.id, f.name, files);
+  else if (isWanted(f)) files.push({ ...f, path: f.name });
 }
 
 rmSync(OUT, { recursive: true, force: true });
@@ -107,4 +110,4 @@ await Promise.all(Array.from({ length: 8 }, async () => {
   }
 }));
 writeFileSync(join(OUT, ".drive-meta.json"), JSON.stringify(meta, null, 2));
-console.log(`Synced ${done} Markdown files from Drive into ${OUT}/`);
+console.log(`Synced ${done} files (chapters, wiki pages and images) from Drive into ${OUT}/`);

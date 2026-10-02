@@ -7,12 +7,13 @@
   const save = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} };
 
   // ---------- Reading preferences ----------
-  const prefs = Object.assign({ theme: "auto", font: "serif", width: "normal", size: 100 }, load(PREFS_KEY));
+  const prefs = Object.assign({ theme: "auto", font: "serif", width: "normal", size: 100, illust: "show" }, load(PREFS_KEY));
 
   function apply() {
     if (prefs.theme === "auto") delete root.dataset.theme; else root.dataset.theme = prefs.theme;
     root.dataset.font = prefs.font;
     root.dataset.width = prefs.width;
+    root.dataset.illust = prefs.illust;
     root.style.setProperty("--scale", prefs.size / 100);
     document.querySelectorAll("[data-set]").forEach((b) =>
       b.setAttribute("aria-pressed", String(prefs[b.dataset.set] === b.dataset.value)));
@@ -97,6 +98,29 @@
       if (link) location.href = link.href;
     });
   }
+
+  // ---------- Illustrations: tap to view full-screen ----------
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest(".illust-link");
+    if (!link || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    const img = link.querySelector("img");
+    const box = document.createElement("div");
+    box.className = "lightbox";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", img.alt || "Illustration");
+    box.innerHTML = `<img src="${link.getAttribute("href")}" alt="">`;
+    box.querySelector("img").alt = img.alt;
+    const close = () => {
+      box.remove();
+      document.removeEventListener("keydown", onKey);
+      link.focus();
+    };
+    const onKey = (ev) => { if (ev.key === "Escape") close(); };
+    box.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(box);
+  });
 
   // ---------- Wiki filter (also runs once an author page is unlocked) ----------
   function initFilter() {
