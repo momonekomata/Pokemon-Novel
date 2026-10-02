@@ -10,3 +10,4 @@ tailscale-state/*
 !secrets/.gitkeep
 !public/.gitkeep
 !tailscale-state/.gitkeep
+.deployed-commit

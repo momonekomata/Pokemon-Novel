@@ -196,12 +196,66 @@ right away.
 Change it, save, then Container Manager → **Project** → `manyo-site` → **Stop**, then **Build** (that
 restarts everything with your new settings).
 
-**Getting a newer version of the site's design or code:** download the ZIP again (Step 3). On the NAS, copy
-the new files into `docker/manyo-site`, letting them replace the old ones. Your `settings.env`, `secrets`
-folder and everything the site saved are not in the ZIP, so they stay. Then do **Stop** and **Build** on the project.
+**Getting a newer version of the site's design or code:** happens by itself once you've set up
+*Automatic updates* below. Without that: download the ZIP again (Step 3), copy the new files into
+`docker/manyo-site` on the NAS (let them replace the old ones; your `settings.env`, `secrets` and saved data
+aren't in the ZIP, so they stay), then **Stop** and **Build** the project.
 
 **Want people to see it later?** Ask Claude: it's a small change to make the Tailscale address public
 ("Funnel"), or to move to a regular public host.
+
+---
+
+## Automatic updates from GitHub
+
+When Claude (or you) changes the site's code on GitHub, the NAS can pick it up by itself: every hour, before
+fetching from Drive, the builder checks GitHub, and if there's something new it downloads it and uses it.
+Your `settings.env`, `secrets`, saved data and Tailscale setup are never touched.
+
+Because the repository is private, the NAS needs a **token**: a key that can only *read* this one repository.
+
+**1. Make the token (on GitHub)**
+
+1. Click your profile picture (top right) → **Settings**.
+2. Scroll all the way down the left side → **Developer settings**.
+3. **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
+4. Fill in:
+   - **Token name:** `manyo NAS`
+   - **Expiration:** the longest it offers (or *No expiration* if it's there).
+   - **Repository access:** **Only select repositories** → pick **Pokemon-Novel**.
+   - **Permissions** → **Repository permissions** → **Contents** → **Read-only**.
+     (It adds *Metadata: Read-only* by itself. That's fine. Don't give it anything else.)
+5. **Generate token**, then **copy** it right away (it starts with `github_pat_`). You can't see it again later.
+
+**2. Give it to the NAS**
+
+1. File Station → `docker/manyo-site` → right-click `settings.env` → **Open with Text Editor**.
+2. Add these three lines at the bottom, with your own token pasted after `GITHUB_TOKEN=`:
+   ```
+   GITHUB_TOKEN=github_pat_paste-yours-here
+   GITHUB_REPO=momonekomata/Pokemon-Novel
+   GITHUB_BRANCH=claude/affectionate-lamport-8i272q
+   ```
+   (If the site later gets merged into `main` on GitHub, change the last line to `GITHUB_BRANCH=main`.)
+3. Save.
+
+**3. One last manual update** (so the NAS has the self-updating code)
+
+Download the ZIP and copy the files over, exactly as in "Getting a newer version" above, then
+Container Manager → **Project** → `manyo-site` → **Stop**, then **Build**.
+
+**4. Check it**
+
+In the **builder** log you'll see, once an hour, either `Site code is up to date (abc1234).` or
+`Updated site code to abc1234.` That's it: from now on you never need to download a ZIP again.
+
+Two things it can't do alone, and will tell you about in the log:
+
+- If an update changes how the containers themselves are set up, the log says
+  `NOTE: this update changed the container setup…`. Do **Stop**, then **Build** once.
+- `Code update skipped: … The GITHUB_TOKEN is wrong or expired` means the token ran out. Make a new one
+  (step 1) and replace it in `settings.env`, then **Stop** and **Build**. The site keeps working meanwhile,
+  just without code updates.
 
 ---
 
