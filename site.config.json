@@ -1,0 +1,55 @@
+{
+  "title": "Man'yō Chronicle",
+  "subtitle": "The 600 Pokémon Girlfriends Who Really, Really, Really, Really, Really Love Yuu",
+  "author": "Parinya",
+  "description": "A Pokémon alternate-reality romance, published chapter by chapter.",
+  "lang": "en",
+  "drive": {
+    "folderId": "1q2gqaHN9QQJ5V1-lWrgh__np4ENZquH8",
+    "wikiFolder": "wiki"
+  },
+  "manuscript": {
+    "chapterPattern": "^Chapter_(\\d+)(?:_(\\d+))?_-_",
+    "interludePattern": "^Interlude_-_",
+    "interludeIndex": "wiki/plot/interlude-index.md",
+    "exclude": [
+      "Interlude_-_Seven_Hundred_And_Forty-Three.md"
+    ],
+    "hideLeadingAuthorNote": true
+  },
+  "wiki": {
+    "readerSections": [
+      "characters",
+      "world"
+    ],
+    "readerExclude": [
+      "characters/future-roster.md"
+    ],
+    "readerHideStatus": [
+      "CANDIDATE",
+      "PLANNED"
+    ],
+    "readerStripHeadings": [
+      "Sources",
+      "Continuity notes",
+      "Open threads",
+      "Arc and open threads",
+      "Open questions",
+      "Conflicts"
+    ],
+    "sectionTitles": {
+      "characters": "Characters",
+      "world": "World",
+      "plot": "Plot",
+      "craft": "Craft",
+      "manuscript": "Manuscript"
+    }
+  },
+  "updates": {
+    "show": 8
+  },
+  "authorTier": {
+    "salt": "d0a2d8c9377afc640e2761e73bea7407",
+    "note": "Public salt for the author password; change it (and the password) to sign everyone out."
+  }
+}

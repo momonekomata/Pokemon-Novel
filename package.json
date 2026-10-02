@@ -1,0 +1,13 @@
+{
+  "name": "pokemon-novel",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node scripts/sync-drive.mjs",
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/build.mjs && python3 -m http.server -d _site 8000"
+  },
+  "dependencies": {
+    "marked": "^18.0.14"
+  }
+}

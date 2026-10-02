@@ -1,18 +1,20 @@
-name: Publish site
+name: Sync from Drive and publish
 
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 * * * *" # hourly
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # commit data/updates.json (the revision log behind "Latest updates")
   pages: write
   id-token: write
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -22,7 +24,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node build.mjs
+          cache: npm
+      - run: npm ci
+
+      - name: Pull chapters and wiki from Google Drive
+        run: npm run sync
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Build site
+        run: npm run build
+        env:
+          AUTHOR_PASSWORD: ${{ secrets.AUTHOR_PASSWORD }}
+
+      - name: Save revision log
+        run: |
+          if ! git diff --quiet -- data/updates.json || [ -n "$(git ls-files --others -- data/updates.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/updates.json
+            git commit -m "Record chapter updates from Drive"
+            git push
+          fi
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

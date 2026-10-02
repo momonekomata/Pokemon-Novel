@@ -98,6 +98,30 @@
     });
   }
 
+  // ---------- Wiki filter (also runs once an author page is unlocked) ----------
+  function initFilter() {
+    const input = document.getElementById("wiki-filter");
+    if (!input || input.dataset.ready) return;
+    input.dataset.ready = "1";
+    input.addEventListener("input", () => {
+      const q = input.value.trim().toLowerCase();
+      let any = false;
+      document.querySelectorAll("[data-filter-group]").forEach((group) => {
+        let shown = 0;
+        group.querySelectorAll("[data-filter-text]").forEach((item) => {
+          const hit = !q || item.dataset.filterText.includes(q);
+          item.hidden = !hit;
+          if (hit) shown++;
+        });
+        group.hidden = shown === 0;
+        if (shown) any = true;
+      });
+      document.getElementById("filter-empty").hidden = any;
+    });
+  }
+  initFilter();
+  document.addEventListener("vault:open", initFilter);
+
   // ---------- Home page ----------
   const resume = document.getElementById("resume");
   if (resume && progress.last) {
