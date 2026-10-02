@@ -4,6 +4,9 @@ node_modules/
 
 # NAS deployment (see nas/README.md)
 settings.env
-secrets/
-public/
-tailscale-state/
+secrets/*
+public/*
+tailscale-state/*
+!secrets/.gitkeep
+!public/.gitkeep
+!tailscale-state/.gitkeep

@@ -96,7 +96,7 @@ SYNC_INTERVAL_MINUTES=60
 
 **4b. The Google key**
 
-1. Inside `manyo-site`, make a new folder called **secrets**.
+1. Open the **secrets** folder inside `manyo-site` (it's already there, empty).
 2. Put your `.json` key file from Step 1 into it.
 3. Rename it to exactly **google-key.json** (again, watch out for `google-key.json.json` on Windows).
 
@@ -133,8 +133,9 @@ manyo-site/
 2. Click the **docker** folder on the left.
 3. Drag your whole **manyo-site** folder from your computer into the File Station window and drop it there.
    Wait for the upload to finish (bottom right corner shows progress).
-4. Double-click `docker` → `manyo-site` and check that `docker-compose.yml`, `settings.env` and the `secrets`
-   folder are all there.
+4. Double-click `docker` → `manyo-site` and check that `docker-compose.yml`, `settings.env` and the folders
+   **secrets**, **public** and **tailscale-state** are all there. If `public` or `tailscale-state` is missing
+   (empty folders sometimes get skipped during upload), make them: **Create → Create folder**, exact names.
 
 ---
 
@@ -214,6 +215,7 @@ Look at the **builder** log first (Step 8). Find the line that says `FAILED` and
 | `Token request failed: 400` / `invalid_grant` | The key file is wrong or was deleted in Google Cloud | Make a new key (Step 1) and replace the file |
 | `Drive API … 404` or `Synced 0 Markdown files` | The Drive folder isn't shared with `web-reader@…` | In Drive, share the folder with that address as **Viewer** |
 | The page won't open at all | Your device isn't on Tailscale, or the NAS hasn't joined | Turn Tailscale on. In the Tailscale admin, check that **manyo** is listed and online. Check the **tailscale** container's log |
+| `Bind mount failed` … `does not exist` | A folder the containers need is missing | In File Station, inside `docker/manyo-site`, create the folder it names (`public` or `tailscale-state`), then **Build** again |
 | The **manyo** machine never shows up in Tailscale | The join code was wrong or already used up | Make a new auth key (Step 2b), put it in `settings.env`, delete the `tailscale-state` folder inside `docker/manyo-site`, then **Stop** and **Build** |
 | Certificate or "not secure" warning | HTTPS isn't enabled in Tailscale | Do Step 2a, wait a minute, reload |
 | The name became `manyo-1` | An older machine called `manyo` exists | Delete the old one in the Tailscale admin, or just use `manyo-1` |
