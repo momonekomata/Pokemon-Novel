@@ -44,7 +44,9 @@ Light-novel style: each picture appears as a full-width plate between paragraphs
    ```markdown
    ![[ch01-sakura-evolves.png]]
    ```
-   (Obsidian style: drag the image into the note in Obsidian and it writes this for you), or
+   (Obsidian style: drag the image into the note in Obsidian and it writes this for you).
+   To add a caption under the picture, type `|` and the caption before the closing brackets:
+   `![[ch01-sakura-evolves.png|Your caption here]]`. Or use the standard form:
    ```markdown
    ![Sakura mid-evolution, ribbons everywhere](illustrations/ch01-sakura-evolves.png "Optional caption under the picture")
    ```
