@@ -486,7 +486,9 @@ function povFor(c) {
 
 function introBox(c, newIds, povInfo) {
   const showPov = povInfo && !(introCfg.defaultPov && povInfo.name.toLowerCase().startsWith(introCfg.defaultPov.toLowerCase()));
-  const newcomers = [...newIds].map((id) => characterById.get(id)).filter((ch) => ch && ch.id !== povInfo?.id);
+  // Main chapters introduce their characters in the prose; the list is for interludes and side stories,
+  // where a reader may be meeting someone for the first time with no setup.
+  const newcomers = c.isInterlude || c.extra ? [...newIds].map((id) => characterById.get(id)).filter((ch) => ch && ch.id !== povInfo?.id) : [];
   if (!showPov && !newcomers.length) return "";
   const charLink = (ch, label) => `<a class="char" href="${ch.url}" data-char="${ch.id}">${esc(label)}</a>`;
   const povChar = povInfo?.id && characterById.get(povInfo.id);
@@ -634,7 +636,8 @@ function wikiDirectory(pages, base, hrefFor, intro, shielded = false) {
 const renderInlineSummary = (s) => renderMarkdown(s, { link: () => null }).replace(/^<p>|<\/p>\s*$/g, "");
 
 function wikiBody(page, src, { link, image }, reader = false) {
-  const body = src.replace(/^#\s+.+\n?/m, "").replace(/^>\s+.+\n?/m, "").replace(reader ? /^\*\*Reader summary:\*\*.*\n?/m : /(?!)/, "");
+  let body = src.replace(/^#\s+.+\n?/m, "").replace(/^>\s+.+\n?/m, "");
+  if (reader) body = body.replace(/^\*\*Reader summary:\*\*.*\n?/m, "").replace(/^-\s*(?:Reader\s+)?Intro:.*\n?/im, "");
   if (reader && page.readerSummary) page = { ...page, summary: page.readerSummary };
   return `
   <header class="wiki-head">
@@ -810,6 +813,9 @@ function buildReport() {
   const hidden = wiki.filter((p) => config.wiki.readerSections.includes(p.section) && !readerWikiPaths.has(p.path));
   add("Wiki pages held back from readers", "In a public section but hidden by their status or the exclude list.",
     hidden.map((p) => `${esc(p.title)} — ${p.status ? esc(p.status.split(";")[0]) : "excluded in site.config.json"}`), false);
+
+  add("Characters without an Intro line", "Public character pages with no \"- Intro:\" line. Their card and introduction box use the summary at the top of the wiki page instead, which may say more than readers should know yet.",
+    characters.filter((ch) => !ch.page.readerSummary).map((ch) => `${esc(ch.name)} — ${code(ch.page.rel)}`), false);
 
   const looksLikeManuscript = reference.filter((r) => /^(chapter|interlude|ch\d)/i.test(r.path)).map((r) => code(r.path));
   add("Chapter-like files not published as chapters", "Their names don't match the chapter or interlude pattern, or they're excluded in site.config.json. They only appear in the author area.", looksLikeManuscript, false);
