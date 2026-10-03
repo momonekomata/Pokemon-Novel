@@ -28,7 +28,17 @@ const chapters = [...main, ...extras];
 const chapterByFile = new Map(chapters.map((c) => [c.path, c]));
 const wikiByPath = new Map(wiki.map((p) => [p.path, p]));
 const referenceByPath = new Map(reference.map((r) => [r.path, r]));
-const readerWiki = wiki.filter((p) => isReaderPage(p, config));
+// A character page hidden by its status (CANDIDATE, PLANNED) still goes public once she is named in a
+// published chapter or side story: she's on the page, so readers need her card. (The spoiler shield
+// keeps her hidden from anyone who hasn't opened that story yet.)
+const cardConfig = config.characterCards || {};
+const characterPool = wiki.filter((p) => p.section === "characters" && config.wiki.readerSections.includes("characters") && /\*\*Species:\*\*/.test(p.src) && !(config.wiki.readerExclude || []).includes(p.rel));
+const mentionedOnPage = new Set();
+{
+  const poolIndex = buildNameIndex(characterPool.map((p) => ({ id: p.slug, name: p.title })), cardConfig);
+  for (const c of chapters) linkCharacters(c.src, poolIndex, () => "", mentionedOnPage);
+}
+const readerWiki = wiki.filter((p) => isReaderPage(p, config) || (characterPool.includes(p) && mentionedOnPage.has(p.slug)));
 const readerWikiPaths = new Set(readerWiki.map((p) => p.path));
 
 // ---------- Illustrations ----------
@@ -182,7 +192,6 @@ const readerWikiUrl = (p) => `wiki/${p.section}/${p.slug}.html`;
 
 // ---------- Character cards ----------
 // Public character pages that describe a person (they have a "Species:" line), with what the card shows.
-const cardConfig = config.characterCards || {};
 const characters = cardConfig.enabled === false ? [] : readerWiki
   .filter((p) => p.section === "characters" && /\*\*Species:\*\*/.test(p.src))
   .map((p) => {
@@ -195,7 +204,8 @@ const characters = cardConfig.enabled === false ? [] : readerWiki
       image = imageResolver(p.path, "", "reader")(href)?.src || null;
     }
     const inline = (md) => renderMarkdown(md, { link: () => null, image: () => null }).replace(/^<p>|<\/p>\s*$/g, "").trim();
-    return { id: p.slug, page: p, name: p.title, species: species ? inline(species.replace(/\.\s*$/, "")) : "", summary: p.summary ? inline(stripAuthorNotes(p.summary, config)) : "", image, url: readerWikiUrl(p) };
+    const summary = p.readerSummary || p.summary;
+    return { id: p.slug, page: p, name: p.title, species: species ? inline(species.replace(/\.\s*$/, "")) : "", summary: summary ? inline(stripAuthorNotes(summary, config)) : "", image, url: readerWikiUrl(p) };
   });
 const nameIndex = buildNameIndex(characters, cardConfig);
 // Spoiler shield: the chapters (in reading order) where each character is mentioned, filled in as
@@ -475,7 +485,7 @@ function povFor(c) {
 }
 
 function introBox(c, newIds, povInfo) {
-  const showPov = povInfo && (c.isInterlude || c.extra || !povInfo.name.toLowerCase().startsWith((introCfg.defaultPov || "").toLowerCase()));
+  const showPov = povInfo && !(introCfg.defaultPov && povInfo.name.toLowerCase().startsWith(introCfg.defaultPov.toLowerCase()));
   const newcomers = [...newIds].map((id) => characterById.get(id)).filter((ch) => ch && ch.id !== povInfo?.id);
   if (!showPov && !newcomers.length) return "";
   const charLink = (ch, label) => `<a class="char" href="${ch.url}" data-char="${ch.id}">${esc(label)}</a>`;
@@ -623,8 +633,9 @@ function wikiDirectory(pages, base, hrefFor, intro, shielded = false) {
 // Summaries are plain text on cards (links inside them would nest anchors).
 const renderInlineSummary = (s) => renderMarkdown(s, { link: () => null }).replace(/^<p>|<\/p>\s*$/g, "");
 
-function wikiBody(page, src, { link, image }) {
-  const body = src.replace(/^#\s+.+\n?/m, "").replace(/^>\s+.+\n?/m, "");
+function wikiBody(page, src, { link, image }, reader = false) {
+  const body = src.replace(/^#\s+.+\n?/m, "").replace(/^>\s+.+\n?/m, "").replace(reader ? /^\*\*Reader summary:\*\*.*\n?/m : /(?!)/, "");
+  if (reader && page.readerSummary) page = { ...page, summary: page.readerSummary };
   return `
   <header class="wiki-head">
     <h1 class="wiki-title">${esc(page.title)}</h1>
@@ -641,7 +652,7 @@ function readerWikiPage(page) {
   const body = `
 <main class="wiki"${appearsAttr(page)}>
   <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Wiki</a><span aria-hidden="true">›</span><span>${esc(sectionTitle(page.section))}</span></nav>
-  ${wikiBody(page, stripAuthorNotes(page.src, config), { link: linkResolver(page.path, base, "reader"), image: imageResolver(page.path, base, "reader") })}
+  ${wikiBody(page, stripAuthorNotes(page.src, config), { link: linkResolver(page.path, base, "reader"), image: imageResolver(page.path, base, "reader") }, true)}
 </main>`;
   return layout({ title: `${page.title} · ${config.title} wiki`, description: page.summary || page.title, base, body, bodyClass: "page-wiki", current: "wiki" });
 }
@@ -654,7 +665,7 @@ function readerWikiIndex() {
     <p class="wiki-lede">Who's who and how the world works.</p>
   </header>
   <p class="shield-note" id="shield-note" hidden></p>
-  ${wikiDirectory(readerWiki, "../", (p) => `${p.section}/${p.slug}.html`, "", true)}
+  ${wikiDirectory(readerWiki.map((p) => (p.readerSummary ? { ...p, summary: p.readerSummary } : p)), "../", (p) => `${p.section}/${p.slug}.html`, "", true)}
 </main>`;
   return layout({ title: `Wiki · ${config.title}`, base: "../", body, bodyClass: "page-wiki", current: "wiki" });
 }
@@ -796,7 +807,7 @@ function buildReport() {
   add("Short names that won't get character cards", "Several characters share this given name, so it's never linked on its own (the full name still is). Add an alias in site.config.json under characterCards.aliases if you want one.",
     [...collisions].filter(([, n]) => n.length > 1).map(([g, n]) => `${esc(g)}: ${n.map(esc).join(", ")}`), false);
 
-  const hidden = wiki.filter((p) => config.wiki.readerSections.includes(p.section) && !isReaderPage(p, config));
+  const hidden = wiki.filter((p) => config.wiki.readerSections.includes(p.section) && !readerWikiPaths.has(p.path));
   add("Wiki pages held back from readers", "In a public section but hidden by their status or the exclude list.",
     hidden.map((p) => `${esc(p.title)} — ${p.status ? esc(p.status.split(";")[0]) : "excluded in site.config.json"}`), false);
 

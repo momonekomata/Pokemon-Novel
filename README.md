@@ -19,14 +19,19 @@ is `data/updates.json`, the revision log behind "Latest updates".
   the text readers see, so a file that is only re-saved or touched in Drive doesn't count.
 - **Wiki**: `wiki/characters` and `wiki/world`, with author material stripped: the Type/Status line,
   source citations, dated rulings, and the Sources / Continuity notes / Open threads sections.
-  Pages whose status starts with CANDIDATE or PLANNED, and `characters/future-roster.md`, are left out.
+  Pages whose status starts with CANDIDATE or PLANNED, and `characters/future-roster.md`, are left out,
+  until the character is named in a published chapter or side story: then her page goes public (the
+  spoiler shield still hides it from readers who haven't opened that story).
+- A character page can carry its own reader-facing one-liner: a line `**Reader summary:** …` replaces the
+  summary at the top of the page on her public page, her character card, the wiki list and the Before you
+  read box. Useful when the wiki summary says more than readers should know yet.
   Links to pages readers can't see become plain text.
 - The italic `*( … )*` author note at the top of an interlude is never shown. A **Before you read** box
   gives readers what they need instead: the point of view (the name from the chapter's wiki manuscript page
   `- POV:` line, or the note's "Name POV" opening, plus a short "first person" / "third person" if given),
   who she is (species and summary from her public wiki page, or an `- Intro:` line on the manuscript page if
-  you'd rather write it), and every character appearing for the first time in that chapter. Chapters told by
-  Yuu skip the POV line.
+  you'd rather write it), and every character appearing for the first time in that chapter. Chapters and
+  interludes told by Yuu skip the POV line.
 
 **Author tier (password)**
 
