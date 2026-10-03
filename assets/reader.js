@@ -11,7 +11,7 @@
   // Version 2 made sans the default. Older saved settings always held the old default (serif), so
   // forget that one setting once; a reader who picks Serif again keeps it.
   if (saved.v !== 2) delete saved.font;
-  const prefs = Object.assign({ theme: "auto", font: "sans", width: "normal", size: 100, illust: "show", cards: "on" }, saved, { v: 2 });
+  const prefs = Object.assign({ theme: "auto", font: "sans", width: "normal", size: 100, illust: "show", cards: "on", shield: "on" }, saved, { v: 2 });
   if (!Number.isFinite(prefs.size)) prefs.size = 100; // repair a size saved as NaN by an earlier bug
 
   function apply() {
@@ -20,6 +20,8 @@
     root.dataset.width = prefs.width;
     root.dataset.illust = prefs.illust;
     root.dataset.cards = prefs.cards;
+    root.dataset.shield = prefs.shield;
+    document.dispatchEvent(new Event("prefs:change"));
     root.style.setProperty("--scale", prefs.size / 100);
     document.querySelectorAll("[data-set]").forEach((b) =>
       b.setAttribute("aria-pressed", String(prefs[b.dataset.set] === b.dataset.value)));
@@ -150,6 +152,128 @@
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCard(); });
   window.addEventListener("resize", closeCard);
+
+  // ---------- Spoiler shield ----------
+  // A character counts as met once the reader has opened a chapter that mentions her (any main
+  // chapter up to the furthest one opened, or that side story). Pages and wiki cards carry the
+  // chapters she appears in (data-appears); order.json gives the reading order.
+  const siteRoot = (() => {
+    const css = document.querySelector('link[href$="assets/style.css"]');
+    return css ? css.getAttribute("href").replace(/assets\/style\.css$/, "") : "";
+  })();
+  const shield = {
+    ready: fetch(siteRoot + "order.json").then((r) => r.json()).catch(() => ({ main: [], extras: [] })),
+    async met(slugs) {
+      if (prefs.shield === "off" || !slugs?.length) return true;
+      const order = await this.ready;
+      const opened = Object.keys(load(PROGRESS_KEY).chapters || {});
+      const furthest = Math.max(-1, ...opened.map((s) => order.main.indexOf(s)));
+      return slugs.some((s) => { const i = order.main.indexOf(s); return i >= 0 ? i <= furthest : opened.includes(s); });
+    },
+  };
+  window.spoilerShield = shield;
+
+  async function applyShield() {
+    // Wiki directory: unmet characters become a "not met yet" card until tapped.
+    let hidden = 0;
+    for (const li of document.querySelectorAll("li[data-appears]")) {
+      const ok = li.dataset.revealed || (await shield.met(li.dataset.appears.split(" ")));
+      li.classList.toggle("unmet", !ok);
+      if (!ok) hidden++;
+    }
+    const note = document.getElementById("shield-note");
+    if (note) {
+      note.hidden = !hidden;
+      note.innerHTML = hidden ? `Spoiler shield: ${hidden} character${hidden === 1 ? "" : "s"} you haven't met yet ${hidden === 1 ? "is" : "are"} hidden. Tap a card to peek, or turn the shield off under the <strong>T</strong> button.` : "";
+    }
+    // A character's own page: a veil until she's met.
+    const page = document.querySelector("main.wiki[data-appears]");
+    if (page && !page.dataset.revealed) {
+      const ok = await shield.met(page.dataset.appears.split(" "));
+      let veil = document.getElementById("spoiler-veil");
+      if (!ok && !veil) {
+        const order = await shield.ready;
+        const first = page.dataset.appears.split(" ")[0];
+        veil = document.createElement("div");
+        veil.id = "spoiler-veil";
+        veil.className = "spoiler-veil";
+        veil.innerHTML = `<p class="veil-title">Spoiler shield</p><p>You haven't reached the chapter where this character first appears yet.</p><div class="veil-actions"><a class="btn btn-primary" href="${siteRoot}${first}.html">Go to that chapter</a><button class="btn btn-ghost" type="button">Show anyway</button></div>`;
+        veil.querySelector("button").addEventListener("click", () => { page.dataset.revealed = "1"; veil.remove(); page.classList.remove("veiled"); });
+        page.prepend(veil);
+        page.classList.add("veiled");
+        if (!order.main.includes(first) && !order.extras.includes(first)) veil.querySelector("a").remove();
+      } else if (ok && veil) {
+        veil.remove();
+        page.classList.remove("veiled");
+      }
+    }
+  }
+  document.addEventListener("click", (e) => {
+    const li = e.target.closest("li.unmet");
+    if (!li) return;
+    e.preventDefault();
+    li.dataset.revealed = "1";
+    li.classList.remove("unmet");
+  }, true);
+  applyShield();
+  document.addEventListener("prefs:change", applyShield);
+
+  // ---------- Line chart (writing stats): drawn at the real width, crosshair + tooltip ----------
+  function drawCharts() {
+    for (const el of document.querySelectorAll(".line-chart[data-points]")) {
+      const pts = JSON.parse(el.dataset.points).map(([d, v]) => ({ t: Date.parse(d + "T00:00:00Z"), d, v }));
+      if (!pts.length) continue;
+      const W = el.clientWidth || 600, H = 220, padL = 52, padR = 16, padT = 16, padB = 28;
+      const t0 = pts[0].t, t1 = Math.max(pts.at(-1).t, t0 + 86400e3);
+      const step = (m) => { const p = 10 ** Math.floor(Math.log10(m)); return [1, 2, 2.5, 5, 10].map((k) => k * p).find((k) => m / k <= 4) || 10 * p; };
+      const vmax = Math.max(1, ...pts.map((p) => p.v)), tick = step(vmax), top = Math.ceil(vmax / tick) * tick;
+      const x = (t) => padL + ((t - t0) / (t1 - t0)) * (W - padL - padR);
+      const y = (v) => padT + (1 - v / top) * (H - padT - padB);
+      const compact = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, "") + "K" : String(n));
+      const day = (t) => new Date(t).toLocaleDateString("en", { month: "short", day: "numeric", timeZone: "UTC" });
+      const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+      const grid = [];
+      for (let v = 0; v <= top; v += tick) grid.push(`<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" class="lc-grid"/><text x="${padL - 8}" y="${y(v) + 4}" class="lc-axis" text-anchor="end">${compact(v)}</text>`);
+      const last = pts.at(-1);
+      el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="width:${W}px;height:${H}px">
+        ${grid.join("")}
+        <text x="${padL}" y="${H - 8}" class="lc-axis">${day(t0)}</text>
+        <text x="${W - padR}" y="${H - 8}" class="lc-axis" text-anchor="end">${day(t1)}</text>
+        <path d="${line}L${x(last.t)},${y(0)}L${x(t0)},${y(0)}Z" class="lc-area"/>
+        <path d="${line}" class="lc-line"/>
+        <circle cx="${x(last.t)}" cy="${y(last.v)}" r="4" class="lc-dot"/>
+        <line class="lc-cross" y1="${padT}" y2="${H - padB}" visibility="hidden"/>
+        <circle class="lc-dot lc-hover" r="4" visibility="hidden"/>
+        <rect class="lc-hit" x="${padL}" y="0" width="${W - padL - padR}" height="${H}" tabindex="0" aria-label="Move along the chart to read values"/>
+      </svg><div class="lc-tip" hidden><strong></strong><span></span></div>`;
+      const cross = el.querySelector(".lc-cross"), hov = el.querySelector(".lc-hover"), tip = el.querySelector(".lc-tip");
+      const show = (i) => {
+        const p = pts[i];
+        cross.setAttribute("x1", x(p.t)); cross.setAttribute("x2", x(p.t)); cross.setAttribute("visibility", "visible");
+        hov.setAttribute("cx", x(p.t)); hov.setAttribute("cy", y(p.v)); hov.setAttribute("visibility", "visible");
+        tip.hidden = false;
+        tip.querySelector("strong").textContent = p.v.toLocaleString("en") + " words";
+        tip.querySelector("span").textContent = new Date(p.t).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+        tip.style.left = `${Math.min(Math.max(0, x(p.t) - tip.offsetWidth / 2), W - tip.offsetWidth)}px`;
+        tip.style.top = `${Math.max(0, y(p.v) - tip.offsetHeight - 12)}px`;
+        el.dataset.index = i;
+      };
+      const nearest = (px) => pts.reduce((best, p, i) => (Math.abs(x(p.t) - px) < Math.abs(x(pts[best].t) - px) ? i : best), 0);
+      const hit = el.querySelector(".lc-hit");
+      hit.addEventListener("pointermove", (e) => show(nearest(e.clientX - el.getBoundingClientRect().left)));
+      hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hov.setAttribute("visibility", "hidden"); tip.hidden = true; });
+      hit.addEventListener("keydown", (e) => {
+        const i = Number(el.dataset.index ?? pts.length - 1);
+        if (e.key === "ArrowLeft") show(Math.max(0, i - 1));
+        if (e.key === "ArrowRight") show(Math.min(pts.length - 1, i + 1));
+      });
+      hit.addEventListener("focus", () => show(pts.length - 1));
+    }
+  }
+  drawCharts();
+  document.addEventListener("vault:open", drawCharts);
+  let resizeTimer;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(drawCharts, 150); });
 
   // ---------- Search matches: chapter opened from a search result (#find=…) ----------
   (function highlightFind() {

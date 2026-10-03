@@ -10,6 +10,7 @@
   --faint: #e8e5df;
   --accent: #b5452f;
   --accent-ink: #ffffff;
+  --chart: #b5452f;
 
   --serif: "Literata", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -25,6 +26,7 @@
   --muted: #86735c;
   --faint: #e3d7bd;
   --accent: #9a4a26;
+  --chart: #9a4a26;
 }
 
 :root[data-theme="dark"] {
@@ -35,6 +37,7 @@
   --faint: #2c2d32;
   --accent: #e08a6c;
   --accent-ink: #16171a;
+  --chart: #cf7456;
   color-scheme: dark;
 }
 
@@ -47,6 +50,7 @@
     --faint: #2c2d32;
     --accent: #e08a6c;
     --accent-ink: #16171a;
+    --chart: #cf7456;
     color-scheme: dark;
   }
 }
@@ -132,6 +136,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .topnav { margin-left: -8px; }
 }
 .brand:hover { color: var(--text); }
+
+.topbar-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 
 .icon-btn {
   display: grid;
@@ -748,6 +754,95 @@ mark.find-current { background: color-mix(in srgb, var(--accent) 50%, transparen
 }
 .chapter-meta a { color: var(--accent); text-decoration: none; }
 .chapter-meta a:hover { text-decoration: underline; }
+
+/* ---------- Spoiler shield ---------- */
+.shield-note { margin: -16px 0 24px; padding: 12px 14px; border-radius: 10px; background: var(--faint); font-size: 14px; line-height: 1.5; color: var(--muted); }
+.shield-note[hidden] { display: none; }
+li.unmet .wiki-card { position: relative; cursor: pointer; }
+li.unmet .wiki-card > * { filter: blur(6px); opacity: .5; user-select: none; }
+li.unmet .wiki-card::after {
+  content: "Not met yet · tap to peek";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+main.veiled > :not(.spoiler-veil):not(.crumbs) { filter: blur(8px); opacity: .35; pointer-events: none; user-select: none; }
+.spoiler-veil {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid var(--faint);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.spoiler-veil p { margin: 0 0 8px; color: var(--muted); }
+.spoiler-veil .veil-title { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text); }
+.veil-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.veil-actions .btn { height: 40px; border: 0; cursor: pointer; font: inherit; font-size: 14px; }
+.veil-actions .btn-ghost { border: 1px solid var(--faint); background: transparent; color: var(--text); }
+
+/* ---------- Arcs in the contents ---------- */
+.arc-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 28px 0 0;
+  padding-bottom: 6px;
+  font-family: var(--serif);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.arc-head + .toc-list .toc-item:first-child { border-top: 1px solid var(--faint); }
+.arc-meta { font-family: var(--sans); font-size: 12px; font-weight: 400; color: var(--muted); }
+.chapter-arc { color: var(--muted); }
+
+/* ---------- Writing stats ---------- */
+.author-banners { display: grid; gap: 10px; margin: -8px 0 28px; }
+.author-banners .report-banner { margin: 0; }
+.stat-hero { display: grid; gap: 4px; margin-bottom: 20px; }
+.stat-hero-value { font-family: var(--sans); font-size: clamp(2.75rem, 9vw, 3.5rem); font-weight: 600; line-height: 1.05; letter-spacing: -.02em; }
+.stat-label { font-size: 13px; color: var(--muted); }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 10px; margin-bottom: 8px; }
+.stat { display: grid; gap: 2px; align-content: start; padding: 14px; border: 1px solid var(--faint); border-radius: 12px; }
+.stat-value { font-size: 1.5rem; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.stat-note { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line-chart { position: relative; margin: 8px 0 4px; }
+/* The site-wide icon rule (svg: 20px, stroked) must not apply to the chart. */
+.line-chart svg { display: block; overflow: visible; width: auto; height: auto; fill: none; stroke: none; stroke-width: 0; }
+.lc-grid { stroke: var(--faint); stroke-width: 1; }
+.lc-axis { font-family: var(--sans); font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.lc-line { fill: none; stroke: var(--chart); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.lc-area { fill: var(--chart); opacity: .1; }
+.lc-dot { fill: var(--chart); stroke: var(--bg); stroke-width: 2; }
+.lc-cross { stroke: var(--muted); stroke-width: 1; }
+.lc-hit { fill: transparent; cursor: crosshair; outline: none; }
+.lc-tip {
+  position: absolute;
+  display: grid;
+  gap: 1px;
+  padding: 7px 10px;
+  border: 1px solid var(--faint);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / .1);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.lc-tip strong { font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; }
+.lc-tip span { color: var(--muted); }
+.lc-tip[hidden] { display: none; }
+.chart-note { font-size: 13px; color: var(--muted); }
+.chart-table summary { cursor: pointer; font-size: 14px; color: var(--muted); margin: 8px 0; }
+.chart-table .table-wrap { max-height: 320px; overflow-y: auto; }
+.table-wrap .num, .table-wrap th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.words-table .num-col { white-space: nowrap; color: var(--muted); }
+.words-table .bar-cell { width: 28%; min-width: 60px; }
+.word-bar { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--chart); opacity: .75; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }

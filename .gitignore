@@ -15,3 +15,4 @@ tailscale-state/*
 # Chapter text kept by the build for "What changed" pages (NAS only)
 data/snapshots/
 data/changes/
+data/stats.json

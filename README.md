@@ -97,6 +97,35 @@ words struck through), and the chapter itself says "Revised … · See what chan
 is shown. The previous versions are kept in `data/snapshots/` on the NAS (never committed); the first build
 after this feature only records them, so differences show from the next edit on.
 
+## Spoiler shield
+
+Readers only see characters they've met. A character counts as met once the reader has opened a chapter
+that mentions her (worked out from where her character card first appears). Until then her wiki card is
+blurred ("Not met yet · tap to peek"), her page opens behind a "Show anyway" veil, and her page is left out
+of search results. Readers can turn the shield off under the **T** button. Progress is per device.
+
+## Arcs in the contents
+
+Put a file called **Arcs.md** at the top of the Drive folder, with one line per arc giving the chapter it
+starts at:
+
+```markdown
+# Arcs
+
+- Chapter 1: The Overwrite
+- Chapter 10: Campus Qualifiers
+```
+
+The chapter list then groups chapters (and the interludes between them) under those headings, and each
+chapter shows its arc next to its number. No Arcs.md means no grouping.
+
+## Writing stats
+
+In the author area: total words, words this week and over the last 30 days, chapter counts, average and
+longest chapter, a chart of total words over time (hover or use ← → for exact numbers, or open it as a
+table) and words per chapter. The history is one total per day, kept in `data/stats.json` on the NAS.
+The first build estimates earlier days from when each chapter file was created in Drive.
+
 ## Hosting on a Synology NAS instead
 
 To run the site on your own NAS, visible only on your Tailscale network, follow
@@ -156,3 +185,5 @@ You can also point the build at any folder laid out like the Drive folder: `CONT
 - Character cards: tap a character's name for a quick reminder of who she is
 - Search across every chapter and wiki page, with matches highlighted in the chapter
 - "What changed" pages for revised chapters
+- Spoiler shield: characters you haven't met yet stay hidden in the wiki and search
+- Chapters grouped into arcs

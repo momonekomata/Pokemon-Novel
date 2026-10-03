@@ -161,6 +161,18 @@ const feed = chapters
   .sort((a, b) => b.date.localeCompare(a.date))
   .slice(0, config.updates?.show ?? 8);
 
+// ---------- Arcs ----------
+// From Arcs.md at the top of the Drive folder, one line per arc giving the chapter it starts at:
+//   - Chapter 1: The Overwrite
+//   - Chapter 10: Campus Qualifiers
+// (site.config.json "arcs" is the fallback.) Interludes belong to the arc their slot falls in.
+const arcsFile = reference.find((r) => /^arcs\.md$/i.test(r.path));
+const arcs = (arcsFile
+  ? [...arcsFile.src.matchAll(/^\s*[-*]\s*(?:chapter|ch\.?)?\s*([\d.]+)\s*[:\u2014\u2013-]\s*(.+?)\s*$/gim)].map((m) => ({ from: parseFloat(m[1]), title: m[2] }))
+  : config.arcs || []
+).sort((a, b) => a.from - b.from);
+const arcFor = (c) => (c.slot ? [...arcs].reverse().find((a) => c.slot[0] >= a.from) : null);
+
 // ---------- Helpers ----------
 
 const fmtDate = (iso) => new Date(iso).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
@@ -186,6 +198,13 @@ const characters = cardConfig.enabled === false ? [] : readerWiki
     return { id: p.slug, page: p, name: p.title, species: species ? inline(species.replace(/\.\s*$/, "")) : "", summary: p.summary ? inline(stripAuthorNotes(p.summary, config)) : "", image, url: readerWikiUrl(p) };
   });
 const nameIndex = buildNameIndex(characters, cardConfig);
+// Spoiler shield: the chapters (in reading order) where each character is mentioned, filled in as
+// chapter pages are rendered. A reader who hasn't opened any of them yet hasn't met her.
+const appearances = new Map(); // character id -> [chapter slugs]
+const appearsAttr = (p) => {
+  const slugs = p.section === "characters" && appearances.get(p.slug);
+  return slugs?.length ? ` data-appears="${slugs.join(" ")}"` : "";
+};
 
 const ICONS = {
   type: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg>',
@@ -244,6 +263,13 @@ const settingsPanel = `
     <div class="seg" role="group" aria-label="Font">
       <button data-set="font" data-value="sans" class="font-sans">Sans</button>
       <button data-set="font" data-value="serif" class="font-serif">Serif</button>
+    </div>
+  </div>
+  <div class="setting">
+    <span class="setting-label">Spoiler shield</span>
+    <div class="seg" role="group" aria-label="Spoiler shield">
+      <button data-set="shield" data-value="on">On</button>
+      <button data-set="shield" data-value="off">Off</button>
     </div>
   </div>
   <div class="setting">
@@ -339,6 +365,16 @@ function write(path, html) {
 
 // ---------- Reader tier ----------
 
+function groupByArc(list) {
+  const groups = [];
+  for (const c of list) {
+    const arc = arcFor(c) || null;
+    if (!groups.length || groups.at(-1).arc !== arc) groups.push({ arc, list: [] });
+    groups.at(-1).list.push(c);
+  }
+  return groups;
+}
+
 function tocList(list) {
   return `<ol class="toc-list">${list
     .map(
@@ -390,7 +426,13 @@ function indexPage() {
       <h2 id="toc-heading">Chapters</h2>
       <span class="section-meta">${main.length} entries · ${totalWords.toLocaleString("en")} words in all</span>
     </div>
-    ${tocList(main)}
+    ${
+      arcs.length
+        ? groupByArc(main)
+            .map(({ arc, list }) => `${arc ? `<h3 class="arc-head"><span>${esc(arc.title)}</span><span class="arc-meta">${list.length} ${list.length === 1 ? "entry" : "entries"}</span></h3>` : ""}${tocList(list)}`)
+            .join("")
+        : tocList(main)
+    }
   </section>
   ${
     extras.length
@@ -408,6 +450,7 @@ function indexPage() {
 }
 
 function chapterPage(c, prev, next) {
+  const seen = new Set();
   const navLink = (ch, rel) =>
     ch
       ? `<a class="nav-link ${rel}" href="${ch.slug}.html" rel="${rel}">${rel === "prev" ? ICONS.left : ""}<span><small>${rel === "prev" ? "Previous" : "Next"}</small>${esc(ch.title)}</span>${rel === "next" ? ICONS.right : ""}</a>`
@@ -416,18 +459,19 @@ function chapterPage(c, prev, next) {
   const body = `
 <main class="reader" data-slug="${c.slug}" data-title="${esc(c.title)}">
   <header class="chapter-head">
-    <p class="chapter-label">${esc(c.label)}</p>
+    <p class="chapter-label">${esc(c.label)}${arcFor(c) ? `<span class="chapter-arc"> · ${esc(arcFor(c).title)}</span>` : ""}</p>
     <h1 class="chapter-title">${esc(c.title)}</h1>
     <p class="chapter-meta">${c.minutes} min read${changes.has(c.slug) ? ` · Revised ${fmtDate(changes.get(c.slug).to)} · <a href="changes/${c.slug}.html">See what changed</a>` : ""}</p>
   </header>
   <article class="prose">
-${linkCharacters(renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") }), nameIndex, (id) => `wiki/characters/${id}.html`)}
+${linkCharacters(renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") }), nameIndex, (id) => `wiki/characters/${id}.html`, seen)}
   </article>
   <nav class="chapter-nav" aria-label="Chapter navigation">
     ${navLink(prev, "prev") || "<span></span>"}
     ${navLink(next, "next") || end}
   </nav>
 </main>`;
+  for (const id of seen) appearances.set(id, [...(appearances.get(id) || []), c.slug]);
   return layout({ title: `${c.title} · ${config.title}`, description: `${c.label}: ${c.title} — ${config.title}`, base: "", body, bodyClass: "page-chapter", current: "read" });
 }
 
@@ -447,7 +491,7 @@ function searchIndex() {
   const none = { link: () => null, image: () => null };
   return [
     ...chapters.map((c) => ({ k: "chapter", t: c.title, l: c.label, u: `${c.slug}.html`, x: htmlToText(renderMarkdown(c.src, none)) })),
-    ...readerWiki.map((p) => ({ k: "wiki", t: p.title, l: sectionTitle(p.section), u: readerWikiUrl(p), x: htmlToText(renderMarkdown(stripAuthorNotes(p.src, config).replace(/^#\s+.+\n?/m, ""), none)) })),
+    ...readerWiki.map((p) => ({ k: "wiki", t: p.title, l: sectionTitle(p.section), u: readerWikiUrl(p), ...(p.section === "characters" && appearances.get(p.slug) ? { a: appearances.get(p.slug) } : {}), x: htmlToText(renderMarkdown(stripAuthorNotes(p.src, config).replace(/^#\s+.+\n?/m, ""), none)) })),
   ];
 }
 
@@ -485,7 +529,7 @@ function changesPage(c) {
   return layout({ title: `What changed: ${c.title} · ${config.title}`, base: "../", body, bodyClass: "page-wiki", current: "read" });
 }
 
-function wikiDirectory(pages, base, hrefFor, intro) {
+function wikiDirectory(pages, base, hrefFor, intro, shielded = false) {
   const bySection = new Map();
   for (const p of pages) {
     if (!bySection.has(p.section)) bySection.set(p.section, []);
@@ -506,7 +550,7 @@ function wikiDirectory(pages, base, hrefFor, intro) {
       .sort((a, b) => a.title.localeCompare(b.title))
       .map(
         (p) => `
-      <li data-filter-text="${esc((p.title + " " + p.summary).toLowerCase())}"><a class="wiki-card" href="${hrefFor(p)}">
+      <li data-filter-text="${esc((p.title + " " + p.summary).toLowerCase())}"${shielded ? appearsAttr(p) : ""}><a class="wiki-card" href="${hrefFor(p)}">
         <span class="wiki-card-title">${esc(p.title)}</span>
         ${p.summary ? `<span class="wiki-card-summary">${renderInlineSummary(p.summary)}</span>` : ""}
       </a></li>`
@@ -538,7 +582,7 @@ ${renderMarkdown(body, { link, image })}
 function readerWikiPage(page) {
   const base = "../../";
   const body = `
-<main class="wiki">
+<main class="wiki"${appearsAttr(page)}>
   <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Wiki</a><span aria-hidden="true">›</span><span>${esc(sectionTitle(page.section))}</span></nav>
   ${wikiBody(page, stripAuthorNotes(page.src, config), { link: linkResolver(page.path, base, "reader"), image: imageResolver(page.path, base, "reader") })}
 </main>`;
@@ -552,7 +596,8 @@ function readerWikiIndex() {
     <h1 class="wiki-title">Wiki</h1>
     <p class="wiki-lede">Who's who and how the world works.</p>
   </header>
-  ${wikiDirectory(readerWiki, "../", (p) => `${p.section}/${p.slug}.html`)}
+  <p class="shield-note" id="shield-note" hidden></p>
+  ${wikiDirectory(readerWiki, "../", (p) => `${p.section}/${p.slug}.html`, "", true)}
 </main>`;
   return layout({ title: `Wiki · ${config.title}`, base: "../", body, bodyClass: "page-wiki", current: "wiki" });
 }
@@ -586,6 +631,67 @@ function loginPage(check) {
   </form>
 </main>`;
   return layout({ title: `Sign in · ${config.title}`, base: "../", body, bodyClass: "page-login", current: "", scripts: ["reader.js", "author.js"], robots: "noindex, nofollow" });
+}
+
+// ---------- Writing stats (author area) ----------
+// A word-count history kept next to updates.json: one total per day. On the first run it's seeded
+// from when each chapter file was created in Drive (an estimate: later edits aren't known).
+const STATS = join(dirname(UPDATES), "stats.json");
+const DAY = 86400e3;
+const totalWords = chapters.reduce((n, c) => n + c.words, 0);
+const today = new Date().toISOString().slice(0, 10);
+const statsHistory = existsSync(STATS) ? JSON.parse(readFileSync(STATS, "utf8")) : (() => {
+  const days = {};
+  let sum = 0;
+  for (const c of [...chapters].sort((a, b) => a.created.localeCompare(b.created))) days[c.created.slice(0, 10)] = sum += c.words;
+  return { seededFromDrive: true, days };
+})();
+statsHistory.days[today] = totalWords;
+writeFileSync(STATS, JSON.stringify(statsHistory, null, 2) + "\n");
+
+function statsPage() {
+  const series = Object.entries(statsHistory.days).sort(([a], [b]) => a.localeCompare(b));
+  const totalAt = (iso) => {
+    let v = 0;
+    for (const [d, n] of series) if (d <= iso) v = n;
+    return v;
+  };
+  const ago = (days) => new Date(Date.now() - days * DAY).toISOString().slice(0, 10);
+  const week = totalWords - totalAt(ago(7));
+  const month = totalWords - totalAt(ago(30));
+  const fmt = (n) => n.toLocaleString("en");
+  const signed = (n) => (n > 0 ? `+${fmt(n)}` : fmt(n));
+  const longest = [...chapters].sort((a, b) => b.words - a.words)[0];
+  const avg = main.length ? Math.round(main.reduce((n, c) => n + c.words, 0) / main.length) : 0;
+  const tile = (label, value, note = "") => `<div class="stat"><span class="stat-label">${label}</span><span class="stat-value">${value}</span>${note ? `<span class="stat-note">${note}</span>` : ""}</div>`;
+  const max = Math.max(1, ...chapters.map((c) => c.words));
+  const rows = [...main, ...extras]
+    .map((c) => `<tr><td class="num-col">${esc(c.label)}</td><td>${esc(c.title)}</td><td class="num">${fmt(c.words)}</td><td class="bar-cell"><span class="word-bar" style="width:${((c.words / max) * 100).toFixed(1)}%"></span></td></tr>`)
+    .join("");
+  const points = series.map(([d, n]) => [d, n]);
+  return `
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Author area</a><span aria-hidden="true">›</span><span>Writing stats</span></nav>
+  <header class="wiki-head">
+    <h1 class="wiki-title">Writing stats</h1>
+    <p class="wiki-lede">Published chapters, interludes and side stories, as of ${fmtDate(new Date().toISOString())}.</p>
+  </header>
+  <div class="stat-hero"><span class="stat-label">Total words</span><span class="stat-hero-value">${fmt(totalWords)}</span></div>
+  <div class="stats-grid">
+    ${tile("This week", signed(week), "words")}
+    ${tile("Last 30 days", signed(month), "words")}
+    ${tile("Chapters & interludes", fmt(main.length))}
+    ${tile("Side stories", fmt(extras.length))}
+    ${tile("Average chapter", fmt(avg), "words")}
+    ${longest ? tile("Longest", fmt(longest.words), esc(longest.title)) : ""}
+  </div>
+  <article class="wiki-body">
+    <h2>Total words over time</h2>
+    <div class="line-chart" data-points='${esc(JSON.stringify(points))}' role="img" aria-label="Total words over time, from ${fmt(points[0]?.[1] || 0)} to ${fmt(totalWords)}"></div>
+    ${statsHistory.seededFromDrive ? `<p class="chart-note">Days before the site started counting are estimated from when each chapter file was created in Drive.</p>` : ""}
+    <details class="chart-table"><summary>Show as a table</summary><div class="table-wrap"><table><thead><tr><th>Date</th><th class="num">Total words</th></tr></thead><tbody>${[...points].reverse().map(([d, n]) => `<tr><td>${fmtDate(d + "T00:00:00Z")}</td><td class="num">${fmt(n)}</td></tr>`).join("")}</tbody></table></div></details>
+    <h2>Words per chapter</h2>
+    <div class="table-wrap"><table class="words-table"><thead><tr><th></th><th>Title</th><th class="num">Words</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  </article>`;
 }
 
 // ---------- Build report (author area) ----------
@@ -677,15 +783,22 @@ async function buildAuthorTier() {
   // Written last: the report needs every page rendered first (that's when broken links are found).
   const report = buildReport();
   const reportId = authorId("\u0000build-report");
+  const statsId = authorId("\u0000writing-stats");
+  write(`author/p/${statsId}.html`, vaultShell(await seal(`Writing stats · Author`, statsPage()), "../../"));
   write(`author/p/${reportId}.html`, vaultShell(await seal(`Build report · Author`, report.html), "../../"));
   const directory = `
   <header class="wiki-head">
     <div class="wiki-head-row"><h1 class="wiki-title">Author area</h1><button class="btn btn-ghost btn-small" id="sign-out" type="button">Sign out</button></div>
     <p class="wiki-lede">Everything in the Drive wiki, unfiltered, plus the reference files at the folder root.</p>
   </header>
-  <a class="report-banner${report.issues ? " has-issues" : ""}" href="p/${reportId}.html">
-    <span><strong>Build report</strong>${report.issues ? `${report.issues} thing${report.issues === 1 ? "" : "s"} to look at` : "Nothing to fix"}</span>${ICONS.right}
-  </a>
+  <div class="author-banners">
+    <a class="report-banner${report.issues ? " has-issues" : ""}" href="p/${reportId}.html">
+      <span><strong>Build report</strong>${report.issues ? `${report.issues} thing${report.issues === 1 ? "" : "s"} to look at` : "Nothing to fix"}</span>${ICONS.right}
+    </a>
+    <a class="report-banner" href="p/${statsId}.html">
+      <span><strong>Writing stats</strong>${totalWords.toLocaleString("en")} words</span>${ICONS.right}
+    </a>
+  </div>
   ${wikiDirectory(all, "../", (p) => `p/${authorId(p.path)}.html`)}`;
   write("author/index.html", vaultShell(await seal(`Author area · ${config.title}`, directory), "../"));
   console.log(`Build report: ${report.summary}.`);
@@ -706,6 +819,7 @@ chapters.filter((c) => changes.has(c.slug)).forEach((c) => write(`changes/${c.sl
 write("wiki/index.html", readerWikiIndex());
 write("search.html", searchPage());
 write("search-index.json", JSON.stringify(searchIndex()));
+write("order.json", JSON.stringify({ main: main.map((c) => c.slug), extras: extras.map((c) => c.slug) }));
 readerWiki.forEach((p) => write(readerWikiUrl(p), readerWikiPage(p)));
 write("characters.json", JSON.stringify(Object.fromEntries(characters.map(({ id, name, species, summary, image, url }) => [id, { name, species, summary, image, url }]))));
 const authorPages = await buildAuthorTier();

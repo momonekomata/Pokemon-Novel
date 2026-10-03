@@ -60,8 +60,17 @@
       const titleHit = ts.some((t) => e.foldedTitle.includes(t));
       hits.push({ e, n, score: (titleHit ? 1000 : 0) + (e.k === "wiki" ? 10 : 0) + n });
     }
+    // Spoiler shield: leave out pages of characters the reader hasn't met yet.
+    let shielded = 0;
+    if (window.spoilerShield) {
+      for (let i = hits.length - 1; i >= 0; i--) {
+        if (hits[i].e.a && !(await window.spoilerShield.met(hits[i].e.a))) { hits.splice(i, 1); shielded++; }
+      }
+      if (input.value.trim() !== q) return;
+    }
     hits.sort((a, b) => b.score - a.score);
-    status.textContent = hits.length ? `${hits.length} ${hits.length === 1 ? "page" : "pages"}` : "Nothing found. Try fewer or different words.";
+    status.textContent = (hits.length ? `${hits.length} ${hits.length === 1 ? "page" : "pages"}` : "Nothing found. Try fewer or different words.") +
+      (shielded ? ` · ${shielded} hidden by the spoiler shield (characters you haven't met yet)` : "");
     const find = encodeURIComponent(q);
     list.innerHTML = hits
       .slice(0, 100)
