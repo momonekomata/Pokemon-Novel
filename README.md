@@ -21,7 +21,12 @@ is `data/updates.json`, the revision log behind "Latest updates".
   source citations, dated rulings, and the Sources / Continuity notes / Open threads sections.
   Pages whose status starts with CANDIDATE or PLANNED, and `characters/future-roster.md`, are left out.
   Links to pages readers can't see become plain text.
-- The italic `*( … )*` author note at the top of an interlude is hidden.
+- The italic `*( … )*` author note at the top of an interlude is hidden, but a **Before you read** box
+  takes its place: the point of view (from the chapter's wiki manuscript page `- POV:` line, or the note's
+  "X POV, …" opening), the note's description of that character cut off before planning remarks
+  ("Proposed placement", "NEW CHARACTERS", "Knowledge-state" … — list in `manuscript.introBox.noteStopsAt`),
+  and every character appearing for the first time in that chapter, with species and summary from the wiki.
+  Chapters told by Yuu skip the POV line.
 
 **Author tier (password)**
 

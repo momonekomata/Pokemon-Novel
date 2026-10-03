@@ -449,6 +449,59 @@ function indexPage() {
   return layout({ title: config.title, base: "", body, bodyClass: "page-home", current: "read" });
 }
 
+// ---------- "Before you read" box ----------
+// Whose point of view the chapter is told from, who she is, and the characters it introduces.
+// POV comes from the chapter's wiki manuscript page ("- POV: …"), else from the author note
+// ("Ohara POV, human, sixty-four, …"). The note's description is cut before planning notes
+// (manuscript.introBox.noteStopsAt) so placement and knowledge-state remarks never show.
+const introCfg = config.manuscript.introBox || {};
+const manuscriptPageFor = new Map(wiki.filter((p) => p.manuscriptFile).map((p) => [p.manuscriptFile, p]));
+const characterById = new Map(characters.map((ch) => [ch.id, ch]));
+const plainInline = (md) => renderMarkdown(md, { link: () => null, image: () => null }).replace(/^<p>|<\/p>\s*$/g, "").replace(/<[^>]+>/g, "").trim();
+const stopRe = new RegExp(`\\b(?:${(introCfg.noteStopsAt || []).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i");
+
+function povFor(c) {
+  const fromNote = c.note.match(/^(.+?)\s+POV\b[\s,;:.-]*([\s\S]*)$/i);
+  const pagePov = manuscriptPageFor.get(c.path)?.pov;
+  const pov = pagePov ? plainInline(stripAuthorNotes(pagePov, config)) : fromNote ? plainInline(fromNote[1]) : "";
+  let about = "";
+  if (fromNote && fromNote[2]) {
+    about = fromNote[2];
+    if (introCfg.noteStopsAt?.length) about = about.split(stopRe)[0];
+    about = plainInline(about).replace(/[\s.;,:(\u2014-]+$/, "");
+    if (about.length > 420) about = about.slice(0, about.lastIndexOf(" ", 420)) + "…";
+  }
+  if (!pov) return null;
+  const name = pov.split(/[,(;]/)[0].trim();
+  const id = [...nameIndex.keys()].sort((a, b) => b.length - a.length).find((n) => new RegExp(`(?<![\\p{L}])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "u").test(name));
+  return { pov, name, about, id: id ? nameIndex.get(id) : null };
+}
+
+function introBox(c, newIds, povInfo) {
+  const showPov = povInfo && (c.isInterlude || c.extra || !povInfo.name.toLowerCase().startsWith((introCfg.defaultPov || "").toLowerCase()));
+  const newcomers = [...newIds].map((id) => characterById.get(id)).filter((ch) => ch && ch.id !== povInfo?.id);
+  if (!showPov && !newcomers.length) return "";
+  const charLink = (ch, label) => `<a class="char" href="${ch.url}" data-char="${ch.id}">${esc(label)}</a>`;
+  const povChar = povInfo?.id && characterById.get(povInfo.id);
+  const povHtml = showPov
+    ? `<div class="intro-row">
+      <p class="intro-label">Point of view</p>
+      <p class="intro-pov">${povChar ? `${charLink(povChar, povInfo.pov.split(/[,(;]/)[0].trim())}${esc(povInfo.pov.slice(povInfo.pov.split(/[,(;]/)[0].length))}` : esc(povInfo.pov)}</p>
+      ${povInfo.about ? `<p class="intro-about">${esc(povInfo.about)}</p>` : povChar && (povChar.species || povChar.summary) ? `<p class="intro-about">${[povChar.species, povChar.summary].filter(Boolean).join(" · ")}</p>` : ""}
+    </div>`
+    : "";
+  const newHtml = newcomers.length
+    ? `<div class="intro-row">
+      <p class="intro-label">New in this chapter</p>
+      <ul class="intro-new">${newcomers
+        .slice(0, 8)
+        .map((ch) => `<li>${charLink(ch, ch.name)}${ch.species ? ` <span class="intro-species">${ch.species}</span>` : ""}${ch.summary ? `<span class="intro-summary">${ch.summary}</span>` : ""}</li>`)
+        .join("")}</ul>
+    </div>`
+    : "";
+  return `<aside class="chapter-intro" aria-label="Before you read">${povHtml}${newHtml}</aside>`;
+}
+
 function chapterPage(c, prev, next) {
   const seen = new Set();
   const navLink = (ch, rel) =>
@@ -456,6 +509,11 @@ function chapterPage(c, prev, next) {
       ? `<a class="nav-link ${rel}" href="${ch.slug}.html" rel="${rel}">${rel === "prev" ? ICONS.left : ""}<span><small>${rel === "prev" ? "Previous" : "Next"}</small>${esc(ch.title)}</span>${rel === "next" ? ICONS.right : ""}</a>`
       : "";
   const end = `<a class="nav-link next" href="index.html#chapters"><span><small>The end — for now</small>Back to contents</span>${ICONS.list}</a>`;
+  const proseHtml = linkCharacters(renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") }), nameIndex, (id) => `wiki/characters/${id}.html`, seen);
+  const povInfo = introCfg.enabled === false ? null : povFor(c);
+  if (povInfo?.id) seen.add(povInfo.id); // told from her eyes counts as meeting her, even if her name never appears
+  const newIds = [...seen].filter((id) => !appearances.has(id));
+  const intro = introCfg.enabled === false ? "" : introBox(c, newIds, povInfo);
   const body = `
 <main class="reader" data-slug="${c.slug}" data-title="${esc(c.title)}">
   <header class="chapter-head">
@@ -463,8 +521,9 @@ function chapterPage(c, prev, next) {
     <h1 class="chapter-title">${esc(c.title)}</h1>
     <p class="chapter-meta">${c.minutes} min read${changes.has(c.slug) ? ` · Revised ${fmtDate(changes.get(c.slug).to)} · <a href="changes/${c.slug}.html">See what changed</a>` : ""}</p>
   </header>
+  ${intro}
   <article class="prose">
-${linkCharacters(renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") }), nameIndex, (id) => `wiki/characters/${id}.html`, seen)}
+${proseHtml}
   </article>
   <nav class="chapter-nav" aria-label="Chapter navigation">
     ${navLink(prev, "prev") || "<span></span>"}

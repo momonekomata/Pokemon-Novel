@@ -16,7 +16,12 @@
     "exclude": [
       "Interlude_-_Seven_Hundred_And_Forty-Three.md"
     ],
-    "hideLeadingAuthorNote": true
+    "hideLeadingAuthorNote": true,
+    "introBox": {
+      "enabled": true,
+      "defaultPov": "Yuu",
+      "noteStopsAt": ["Proposed placement", "Placement", "NEW CHARACTER", "Knowledge-state", "Knowledge state", "Interlude lens", "Status", "Slot", "Day anchor", "Continuity", "Gate"]
+    }
   },
   "wiki": {
     "readerSections": [

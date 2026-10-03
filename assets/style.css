@@ -844,6 +844,36 @@ main.veiled > :not(.spoiler-veil):not(.crumbs) { filter: blur(8px); opacity: .35
 .words-table .bar-cell { width: 28%; min-width: 60px; }
 .word-bar { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--chart); opacity: .75; }
 
+/* ---------- Before you read (POV and newcomers) ---------- */
+.chapter-intro {
+  display: grid;
+  gap: 16px;
+  margin: 0 0 2.4em;
+  padding: 16px 18px;
+  border: 1px solid var(--faint);
+  border-radius: 14px;
+  background: var(--surface);
+  font-family: var(--sans);
+}
+.intro-row { display: grid; gap: 4px; }
+.intro-row + .intro-row { padding-top: 14px; border-top: 1px solid var(--faint); }
+.intro-label { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.intro-pov { margin: 0; font-family: var(--serif); font-size: 1.0625rem; font-weight: 600; }
+.intro-about { margin: 0; font-size: 14px; line-height: 1.55; color: var(--muted); }
+.intro-new { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 10px; }
+.intro-new li { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline; font-size: 14px; }
+.intro-new a.char { font-family: var(--serif); font-size: 1rem; font-weight: 600; }
+.intro-species { font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+.intro-summary { grid-column: 1 / -1; line-height: 1.5; color: var(--muted); }
+.chapter-intro a.char {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+}
+:root[data-cards="off"] .chapter-intro a.char { text-decoration: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
 }
