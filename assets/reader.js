@@ -11,13 +11,14 @@
   // Version 2 made sans the default. Older saved settings always held the old default (serif), so
   // forget that one setting once; a reader who picks Serif again keeps it.
   if (saved.v !== 2) delete saved.font;
-  const prefs = Object.assign({ theme: "auto", font: "sans", width: "normal", size: 100, illust: "show" }, saved, { v: 2 });
+  const prefs = Object.assign({ theme: "auto", font: "sans", width: "normal", size: 100, illust: "show", cards: "on" }, saved, { v: 2 });
 
   function apply() {
     if (prefs.theme === "auto") delete root.dataset.theme; else root.dataset.theme = prefs.theme;
     root.dataset.font = prefs.font;
     root.dataset.width = prefs.width;
     root.dataset.illust = prefs.illust;
+    root.dataset.cards = prefs.cards;
     root.style.setProperty("--scale", prefs.size / 100);
     document.querySelectorAll("[data-set]").forEach((b) =>
       b.setAttribute("aria-pressed", String(prefs[b.dataset.set] === b.dataset.value)));
@@ -102,6 +103,52 @@
       if (link) location.href = link.href;
     });
   }
+
+  // ---------- Character cards: tap a highlighted name ----------
+  let cardData = null;
+  let card = null;
+  const closeCard = () => { if (card) { card.remove(); card = null; } };
+  async function loadCards() {
+    if (!cardData) {
+      try { cardData = await (await fetch("characters.json")).json(); }
+      catch (e) { cardData = {}; }
+    }
+    return cardData;
+  }
+  document.addEventListener("click", async (e) => {
+    const name = e.target.closest("a.char");
+    if (card && !e.target.closest(".char-card")) closeCard();
+    if (!name || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    if (prefs.cards === "off") return;
+    const info = (await loadCards())[name.dataset.char];
+    if (!info) { location.href = name.href; return; }
+    closeCard();
+    card = document.createElement("div");
+    card.className = "char-card";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-label", info.name);
+    card.innerHTML = `
+      ${info.image ? `<img class="char-card-img" src="${info.image}" alt="">` : ""}
+      <div class="char-card-body">
+        <p class="char-card-name"></p>
+        ${info.species ? `<p class="char-card-species">${info.species}</p>` : ""}
+        ${info.summary ? `<p class="char-card-summary">${info.summary}</p>` : ""}
+        <a class="char-card-link" href="${name.getAttribute("href")}">Open wiki page →</a>
+      </div>`;
+    card.querySelector(".char-card-name").textContent = info.name;
+    document.body.appendChild(card);
+    // Below the name, kept on screen; above it if there's no room below.
+    const r = name.getBoundingClientRect();
+    const w = card.offsetWidth, h = card.offsetHeight, pad = 12;
+    const left = Math.min(Math.max(pad, r.left + r.width / 2 - w / 2), window.innerWidth - w - pad);
+    const below = r.bottom + 8 + h < window.innerHeight;
+    card.style.left = `${left + window.scrollX}px`;
+    card.style.top = `${(below ? r.bottom + 8 : r.top - h - 8) + window.scrollY}px`;
+    card.querySelector(".char-card-link").focus({ preventScroll: true });
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCard(); });
+  window.addEventListener("resize", closeCard);
 
   // ---------- Illustrations: tap to view full-screen ----------
   document.addEventListener("click", (e) => {

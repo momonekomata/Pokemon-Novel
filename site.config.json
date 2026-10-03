@@ -46,6 +46,12 @@
       "manuscript": "Manuscript"
     }
   },
+  "characterCards": {
+    "enabled": true,
+    "aliases": {},
+    "ignoreNames": []
+  },
+
   "updates": {
     "show": 8
   },

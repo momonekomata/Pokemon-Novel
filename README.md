@@ -64,6 +64,25 @@ Good to know:
   `Image not found: …`.
 - Works the same in wiki pages, e.g. a character portrait at the top of a character's page.
 
+## Character cards
+
+The first time a character's name appears in a chapter, it gets a dotted underline. Tapping it opens a
+small card with her name, species, one-line summary and portrait (the first picture on her wiki page),
+plus a link to the page. Readers can switch this off under the **T** button.
+
+- Cards come from public character pages (`wiki/characters`) that have a `**Species:**` line.
+- A character is found by her full page title ("Inumaru Runa") and, for two-word names, her given
+  name ("Runa"). A given name shared by two characters is never linked on its own; the build report lists
+  these. Add extra names in `site.config.json`, keyed by the page's file name:
+  `"characterCards": { "aliases": { "inumaru-runa": ["Runa-chan"] } }`.
+
+## Build report
+
+The author area opens with a **Build report**, refreshed on every sync: links to missing files, missing
+pictures, gaps in chapter numbers, duplicate chapter numbers, interludes not yet in the reading order,
+given names too ambiguous for character cards, wiki pages held back from readers, and chapter-like files
+that weren't published as chapters. The builder log also prints a one-line summary.
+
 ## Hosting on a Synology NAS instead
 
 To run the site on your own NAS, visible only on your Tailscale network, follow
@@ -120,3 +139,4 @@ You can also point the build at any folder laid out like the Drive folder: `CONT
 - Previous/next chapter links, and ← / → keyboard shortcuts
 - Wiki filter box for finding a character or place quickly
 - Illustrations between paragraphs; tap to view full-screen, or switch them off
+- Character cards: tap a character's name for a quick reminder of who she is

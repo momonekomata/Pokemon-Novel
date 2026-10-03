@@ -6,6 +6,7 @@ import { dirname, join, posix } from "node:path";
 import { loadContent, isReaderPage, stripAuthorNotes, sha256 } from "../lib/content.mjs";
 import { escapeHtml as esc, renderMarkdown } from "../lib/markdown.mjs";
 import { deriveKey, encrypt, KDF_ITERATIONS } from "../lib/vault.mjs";
+import { buildNameIndex, linkCharacters } from "../lib/characters.mjs";
 
 const OUT = process.env.OUT_DIR || "_site";
 const CONTENT = process.env.CONTENT_DIR || "content";
@@ -141,6 +142,25 @@ const sectionTitle = (s) => config.wiki.sectionTitles?.[s] || (s ? s[0].toUpperC
 const authorId = (path) => sha256(`${config.authorTier.salt}:${path}`).slice(0, 16);
 const readerWikiUrl = (p) => `wiki/${p.section}/${p.slug}.html`;
 
+// ---------- Character cards ----------
+// Public character pages that describe a person (they have a "Species:" line), with what the card shows.
+const cardConfig = config.characterCards || {};
+const characters = cardConfig.enabled === false ? [] : readerWiki
+  .filter((p) => p.section === "characters" && /\*\*Species:\*\*/.test(p.src))
+  .map((p) => {
+    const src = stripAuthorNotes(p.src, config);
+    const species = (src.match(/\*\*Species:\*\*\s*([^\n]+)/) || [])[1] || "";
+    const portrait = (src.match(/!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\)/) || [])[0];
+    let image = null;
+    if (portrait) {
+      const href = portrait.startsWith("![[") ? portrait.slice(3, -2).split("|")[0] : portrait.match(/\]\((<?)([^)>\s]+)/)[2];
+      image = imageResolver(p.path, "", "reader")(href)?.src || null;
+    }
+    const inline = (md) => renderMarkdown(md, { link: () => null, image: () => null }).replace(/^<p>|<\/p>\s*$/g, "").trim();
+    return { id: p.slug, page: p, name: p.title, species: species ? inline(species.replace(/\.\s*$/, "")) : "", summary: p.summary ? inline(stripAuthorNotes(p.summary, config)) : "", image, url: readerWikiUrl(p) };
+  });
+const nameIndex = buildNameIndex(characters, cardConfig);
+
 const ICONS = {
   type: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg>',
   list: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>',
@@ -149,6 +169,9 @@ const ICONS = {
   lock: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
 };
+
+// Links to Markdown files that don't exist anywhere in the synced folder (for the build report).
+const brokenLinks = new Map();
 
 // Resolves a Markdown link inside a Drive file to a site URL for the given tier.
 function linkResolver(fromPath, base, tier) {
@@ -159,6 +182,7 @@ function linkResolver(fromPath, base, tier) {
     const hash = frag ? `#${frag}` : "";
     const wikiPage = wikiByPath.get(target);
     const chapter = chapterByFile.get(target) || (wikiPage?.manuscriptFile && chapterByFile.get(wikiPage.manuscriptFile));
+    if (/\.md$/i.test(target) && !wikiPage && !chapter && !referenceByPath.has(target)) brokenLinks.set(`${fromPath}\u0000${target}`, { from: fromPath, href: target });
     if (tier === "author") {
       if (wikiPage || referenceByPath.has(target)) return `${base}author/p/${authorId(target)}.html${hash}`;
       if (chapter) return `${base}${chapter.slug}.html`;
@@ -194,6 +218,13 @@ const settingsPanel = `
     <div class="seg" role="group" aria-label="Font">
       <button data-set="font" data-value="sans" class="font-sans">Sans</button>
       <button data-set="font" data-value="serif" class="font-serif">Serif</button>
+    </div>
+  </div>
+  <div class="setting">
+    <span class="setting-label">Character cards</span>
+    <div class="seg" role="group" aria-label="Character cards">
+      <button data-set="cards" data-value="on">On</button>
+      <button data-set="cards" data-value="off">Off</button>
     </div>
   </div>
   <div class="setting">
@@ -255,6 +286,7 @@ ${robots ? `<meta name="robots" content="${robots}">\n` : ""}<meta name="theme-c
     if (p.font && p.v === 2) d.dataset.font = p.font;
     if (p.width) d.dataset.width = p.width;
     if (p.illust) d.dataset.illust = p.illust;
+    if (p.cards) d.dataset.cards = p.cards;
     if (p.size) d.style.setProperty("--scale", p.size / 100);
   } catch (e) {}
 </script>
@@ -362,7 +394,7 @@ function chapterPage(c, prev, next) {
     <p class="chapter-meta">${c.minutes} min read</p>
   </header>
   <article class="prose">
-${renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") })}
+${linkCharacters(renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") }), nameIndex, (id) => `wiki/characters/${id}.html`)}
   </article>
   <nav class="chapter-nav" aria-label="Chapter navigation">
     ${navLink(prev, "prev") || "<span></span>"}
@@ -475,6 +507,68 @@ function loginPage(check) {
   return layout({ title: `Sign in · ${config.title}`, base: "../", body, bodyClass: "page-login", current: "", scripts: ["reader.js", "author.js"], robots: "noindex, nofollow" });
 }
 
+// ---------- Build report (author area) ----------
+// Everything the build noticed that you might want to fix, gathered on one page.
+function buildReport() {
+  const li = (items) => (items.length ? `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>` : `<p class="report-ok">Nothing to fix.</p>`);
+  const code = (s) => `<code>${esc(s)}</code>`;
+  const sections = [];
+  let issues = 0;
+  const add = (title, intro, items, counts = true) => {
+    if (counts) issues += items.length;
+    sections.push(`<h2>${esc(title)}${items.length ? ` <span class="report-count">${items.length}</span>` : ""}</h2>${intro ? `<p>${intro}</p>` : ""}${li(items)}`);
+  };
+
+  const byTarget = new Map();
+  for (const { from, href } of brokenLinks.values()) {
+    if (!byTarget.has(href)) byTarget.set(href, new Set());
+    byTarget.get(href).add(from);
+  }
+  add(
+    "Links to missing files",
+    "A page links to a file that isn't in the synced Drive folder (deleted, renamed, or in a folder the site doesn't read, like Sessions).",
+    [...byTarget].sort().map(([href, from]) => `${code(href)} — from ${[...from].sort().map(code).join(", ")}`)
+  );
+  add("Pictures not found", "A chapter or wiki page shows a picture the illustrations folder doesn't have. Check the spelling.",
+    [...missingImages].sort().map((m) => { const [from, href] = m.split(" → "); return `${code(href)} — in ${code(from)}`; }));
+
+  const numbered = main.filter((c) => !c.isInterlude && Number.isInteger(c.slot[0])).map((c) => c.slot[0]);
+  const gaps = [];
+  for (let n = 1; n <= Math.max(0, ...numbered); n++) if (!numbered.includes(n)) gaps.push(n);
+  add("Chapter numbers with no file", "Numbers between Chapter 1 and the last chapter that have no file. Fine if intentional.", gaps.length ? [gaps.join(", ")] : []);
+
+  const seenNum = new Map();
+  for (const c of main.filter((c) => !c.isInterlude)) seenNum.set(c.slot[0], [...(seenNum.get(c.slot[0]) || []), c.path]);
+  add("Two files with the same chapter number", "", [...seenNum].filter(([, f]) => f.length > 1).map(([n, f]) => `Chapter ${n}: ${f.map(code).join(", ")}`));
+
+  add("Interludes not yet in the reading order", "Shown to readers under Side stories. Give each a slot in the interlude index to place it between chapters.",
+    extras.map((c) => `${esc(c.title)} — ${code(c.path)}`), false);
+
+  const collisions = new Map();
+  for (const ch of characters) {
+    const w = ch.name.split(/\s+/);
+    if (w.length === 2) collisions.set(w[1], [...(collisions.get(w[1]) || []), ch.name]);
+  }
+  add("Short names that won't get character cards", "Several characters share this given name, so it's never linked on its own (the full name still is). Add an alias in site.config.json under characterCards.aliases if you want one.",
+    [...collisions].filter(([, n]) => n.length > 1).map(([g, n]) => `${esc(g)}: ${n.map(esc).join(", ")}`), false);
+
+  const hidden = wiki.filter((p) => config.wiki.readerSections.includes(p.section) && !isReaderPage(p, config));
+  add("Wiki pages held back from readers", "In a public section but hidden by their status or the exclude list.",
+    hidden.map((p) => `${esc(p.title)} — ${p.status ? esc(p.status.split(";")[0]) : "excluded in site.config.json"}`), false);
+
+  const looksLikeManuscript = reference.filter((r) => /^(chapter|interlude|ch\d)/i.test(r.path)).map((r) => code(r.path));
+  add("Chapter-like files not published as chapters", "Their names don't match the chapter or interlude pattern, or they're excluded in site.config.json. They only appear in the author area.", looksLikeManuscript, false);
+
+  const html = `
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Author area</a><span aria-hidden="true">›</span><span>Build report</span></nav>
+  <header class="wiki-head">
+    <h1 class="wiki-title">Build report</h1>
+    <p class="wiki-lede">${issues ? `${issues} thing${issues === 1 ? "" : "s"} to look at` : "Nothing to fix"} · checked ${new Date().toLocaleString("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC</p>
+  </header>
+  <article class="wiki-body report">${sections.join("\n")}</article>`;
+  return { html, issues, summary: `${byTarget.size} missing link targets, ${missingImages.size} missing pictures, ${gaps.length} chapter-number gaps` };
+}
+
 async function buildAuthorTier() {
   const password = process.env.AUTHOR_PASSWORD;
   if (!password) {
@@ -490,13 +584,6 @@ async function buildAuthorTier() {
   write("author/login.html", loginPage(await encrypt(key, "ok")));
 
   const all = [...wiki, ...reference.map((r) => ({ ...r, section: "reference", summary: "", rel: r.path }))];
-  const directory = `
-  <header class="wiki-head">
-    <div class="wiki-head-row"><h1 class="wiki-title">Author area</h1><button class="btn btn-ghost btn-small" id="sign-out" type="button">Sign out</button></div>
-    <p class="wiki-lede">Everything in the Drive wiki, unfiltered, plus the reference files at the folder root.</p>
-  </header>
-  ${wikiDirectory(all, "../", (p) => `p/${authorId(p.path)}.html`)}`;
-  write("author/index.html", vaultShell(await seal(`Author area · ${config.title}`, directory), "../"));
 
   for (const page of all) {
     const base = "../../";
@@ -505,6 +592,22 @@ async function buildAuthorTier() {
     write(`author/p/${authorId(page.path)}.html`, vaultShell(await seal(`${page.title} · Author`, html), base));
     count++;
   }
+
+  // Written last: the report needs every page rendered first (that's when broken links are found).
+  const report = buildReport();
+  const reportId = authorId("\u0000build-report");
+  write(`author/p/${reportId}.html`, vaultShell(await seal(`Build report · Author`, report.html), "../../"));
+  const directory = `
+  <header class="wiki-head">
+    <div class="wiki-head-row"><h1 class="wiki-title">Author area</h1><button class="btn btn-ghost btn-small" id="sign-out" type="button">Sign out</button></div>
+    <p class="wiki-lede">Everything in the Drive wiki, unfiltered, plus the reference files at the folder root.</p>
+  </header>
+  <a class="report-banner${report.issues ? " has-issues" : ""}" href="p/${reportId}.html">
+    <span><strong>Build report</strong>${report.issues ? `${report.issues} thing${report.issues === 1 ? "" : "s"} to look at` : "Nothing to fix"}</span>${ICONS.right}
+  </a>
+  ${wikiDirectory(all, "../", (p) => `p/${authorId(p.path)}.html`)}`;
+  write("author/index.html", vaultShell(await seal(`Author area · ${config.title}`, directory), "../"));
+  console.log(`Build report: ${report.summary}.`);
   return count;
 }
 
@@ -520,6 +623,7 @@ main.forEach((c, i) => write(`${c.slug}.html`, chapterPage(c, main[i - 1], main[
 extras.forEach((c, i) => write(`${c.slug}.html`, chapterPage(c, extras[i - 1], extras[i + 1])));
 write("wiki/index.html", readerWikiIndex());
 readerWiki.forEach((p) => write(readerWikiUrl(p), readerWikiPage(p)));
+write("characters.json", JSON.stringify(Object.fromEntries(characters.map(({ id, name, species, summary, image, url }) => [id, { name, species, summary, image, url }]))));
 const authorPages = await buildAuthorTier();
 const imageCount = await writeImages();
 
