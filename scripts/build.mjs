@@ -24,6 +24,45 @@ if (!existsSync(CONTENT)) {
 }
 
 const { main, extras, wiki, reference } = loadContent(CONTENT, config);
+
+// ---------- Side story groups ----------
+// From Side_Stories.md at the top of the Drive folder: "## Group" headings, each followed by a list of
+// side stories in reading order (title, file name or link). Side stories it doesn't list come last,
+// under "More side stories", in interlude-index order.
+const sideFile = reference.find((r) => /^side[_ -]?stories\.md$/i.test(r.path));
+const sideKey = (s) => s.toLowerCase().normalize("NFKD").replace(/^interlude[_ -]+-[_ -]+/, "").replace(/\.md$/, "").replace(/[^a-z0-9]/g, "").replace(/^the/, "");
+const sideGroups = [];
+const sideUnmatched = [];
+if (sideFile) {
+  const byKey = new Map();
+  for (const c of extras) for (const k of [c.title, c.path, c.path.split("_-_").pop()]) if (!byKey.has(sideKey(k))) byKey.set(sideKey(k), c);
+  const placed = new Set();
+  let group = null;
+  for (const line of sideFile.src.split("\n")) {
+    const h = line.match(/^#{2,3}\s+(.+?)\s*$/);
+    if (h) { group = { title: h[1], note: "", list: [] }; sideGroups.push(group); continue; }
+    const item = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$/);
+    if (!item) {
+      if (group && !group.list.length && line.trim() && !/^#/.test(line)) group.note += (group.note ? " " : "") + line.trim();
+      continue;
+    }
+    const raw = item[1].replace(/\s+[\u2014\u2013]\s.*$|\s+--?\s.*$/, "");
+    const link = raw.match(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]|\[([^\]]+)\]\(([^)]+)\)/);
+    const keys = link ? [link[1], link[2], link[3] && decodeURIComponent(link[3]).split("/").pop()].filter(Boolean) : [raw.replace(/[*_]/g, "")];
+    const c = keys.map((k) => byKey.get(sideKey(k))).find(Boolean);
+    if (!c) { sideUnmatched.push(raw); continue; }
+    if (placed.has(c)) continue;
+    placed.add(c);
+    if (!group) { group = { title: "Side stories", note: "", list: [] }; sideGroups.push(group); }
+    group.list.push(c);
+  }
+  const rest = extras.filter((c) => !placed.has(c));
+  if (rest.length) sideGroups.push({ title: "More side stories", note: "", list: rest, rest: true });
+  for (let i = sideGroups.length - 1; i >= 0; i--) if (!sideGroups[i].list.length) sideGroups.splice(i, 1);
+  extras.splice(0, extras.length, ...sideGroups.flatMap((g) => g.list));
+  for (const g of sideGroups) if (!g.rest) for (const c of g.list) c.group = g.title;
+}
+
 const chapters = [...main, ...extras];
 const chapterByFile = new Map(chapters.map((c) => [c.path, c]));
 const wikiByPath = new Map(wiki.map((p) => [p.path, p]));
@@ -449,9 +488,15 @@ function indexPage() {
       ? `<section class="toc" id="side-stories" aria-labelledby="extras-heading">
     <div class="section-head">
       <h2 id="extras-heading">Side stories</h2>
-      <span class="section-meta">Not yet placed in the reading order</span>
+      <span class="section-meta">${sideGroups.length ? `${extras.length} stories, in reading order` : "Not yet placed in the reading order"}</span>
     </div>
-    ${tocList(extras)}
+    ${
+      sideGroups.length
+        ? sideGroups
+            .map(({ title, note, list }) => `<h3 class="arc-head"><span>${esc(title)}</span><span class="arc-meta">${list.length} ${list.length === 1 ? "story" : "stories"}</span></h3>${note ? `<p class="arc-note">${renderInlineSummary(note)}</p>` : ""}${tocList(list)}`)
+            .join("")
+        : tocList(extras)
+    }
   </section>`
       : ""
   }
@@ -527,7 +572,7 @@ function chapterPage(c, prev, next) {
   const body = `
 <main class="reader" data-slug="${c.slug}" data-title="${esc(c.title)}">
   <header class="chapter-head">
-    <p class="chapter-label">${esc(c.label)}${arcFor(c) ? `<span class="chapter-arc"> · ${esc(arcFor(c).title)}</span>` : ""}</p>
+    <p class="chapter-label">${esc(c.label)}${arcFor(c) ? `<span class="chapter-arc"> · ${esc(arcFor(c).title)}</span>` : c.group ? `<span class="chapter-arc"> · ${esc(c.group)}</span>` : ""}</p>
     <h1 class="chapter-title">${esc(c.title)}</h1>
     <p class="chapter-meta">${c.minutes} min read${changes.has(c.slug) ? ` · Revised ${fmtDate(changes.get(c.slug).to)} · <a href="changes/${c.slug}.html">See what changed</a>` : ""}</p>
   </header>
@@ -801,6 +846,12 @@ function buildReport() {
 
   add("Interludes not yet in the reading order", "Shown to readers under Side stories. Give each a slot in the interlude index to place it between chapters.",
     extras.map((c) => `${esc(c.title)} — ${code(c.path)}`), false);
+
+  if (sideFile) {
+    add("Side stories missing from Side_Stories.md", "Shown at the end, under More side stories. Add each to a group in Side_Stories.md.",
+      (sideGroups.find((g) => g.rest)?.list || []).map((c) => `${esc(c.title)} — ${code(c.path)}`));
+    add("Lines in Side_Stories.md that match no side story", "Check the spelling, or the story may now have a slot (then it's under Chapters) or not exist yet.", sideUnmatched.map(esc));
+  }
 
   const collisions = new Map();
   for (const ch of characters) {

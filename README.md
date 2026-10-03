@@ -14,7 +14,8 @@ is `data/updates.json`, the revision log behind "Latest updates".
 - **Chapters**: `Chapter_NN_-_Title.md` files in number order. Interludes that have a reading slot in
   `wiki/plot/interlude-index.md` (22.5, 29.5 …), or whose file name carries one (`Chapter_29_5_-_…`),
   are slotted in between.
-- **Side stories**: every other `Interlude_-_….md`, in the order the interlude index mentions them.
+- **Side stories**: every other `Interlude_-_….md`, grouped and ordered by `Side_Stories.md` (see below),
+  or without it in the order the interlude index mentions them.
 - **Latest updates**: new chapters, and chapters whose prose changed. A change is detected by comparing
   the text readers see, so a file that is only re-saved or touched in Drive doesn't count.
 - **Wiki**: `wiki/characters` and `wiki/world`, with author material stripped: the Type/Status line,
@@ -130,6 +131,26 @@ starts at:
 The chapter list then groups chapters (and the interludes between them) under those headings, and each
 chapter shows its arc next to its number. No Arcs.md means no grouping.
 
+## Side story groups
+
+Put a file called **Side_Stories.md** at the top of the Drive folder. Each `## ` heading is a group, and
+the list under it gives its side stories in reading order, by title:
+
+```markdown
+## Runa, after the awakening
+Read these after the confrontation, in this order.
+
+1. Water Resistance — first: Yuu-kun-sama's debut
+2. The Hypocrisy Coefficient
+```
+
+A line of text right under a heading is shown to readers as the group's note. Anything after ` — ` on a
+list line is a private reminder and isn't shown. The contents then show the side stories under those
+headings, previous/next follows that order, and each story shows its group next to "Side story". Side
+stories you haven't listed come last, under "More side stories"; the build report lists them, and any line
+that matches no side story. A title, a file name or an Obsidian `[[link]]` all work, and a leading
+"The" doesn't matter.
+
 ## Writing stats
 
 In the author area: total words, words this week and over the last 30 days, chapter counts, average and
@@ -197,4 +218,4 @@ You can also point the build at any folder laid out like the Drive folder: `CONT
 - Search across every chapter and wiki page, with matches highlighted in the chapter
 - "What changed" pages for revised chapters
 - Spoiler shield: characters you haven't met yet stay hidden in the wiki and search
-- Chapters grouped into arcs
+- Chapters grouped into arcs, side stories grouped in reading order

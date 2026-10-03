@@ -798,6 +798,8 @@ main.veiled > :not(.spoiler-veil):not(.crumbs) { filter: blur(8px); opacity: .35
 }
 .arc-head + .toc-list .toc-item:first-child { border-top: 1px solid var(--faint); }
 .arc-meta { font-family: var(--sans); font-size: 12px; font-weight: 400; color: var(--muted); }
+.arc-note { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+.arc-note + .toc-list .toc-item:first-child { border-top: 1px solid var(--faint); }
 .chapter-arc { color: var(--muted); }
 
 /* ---------- Writing stats ---------- */
