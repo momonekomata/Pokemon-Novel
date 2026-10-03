@@ -28,12 +28,17 @@ is `data/updates.json`, the revision log behind "Latest updates".
   her character card, the wiki list and the Before you read box, and the line itself isn't shown. Without
   one, those use the wiki summary; the build report lists characters still missing an Intro line.
   Links to pages readers can't see become plain text.
-- The italic `*( … )*` author note at the top of an interlude is never shown. A **Before you read** box
-  gives readers what they need instead: the point of view (the name from the chapter's wiki manuscript page
-  `- POV:` line, or the note's "Name POV" opening, plus a short "first person" / "third person" if given),
-  who she is (species and summary from her public wiki page, or an `- Intro:` line on the manuscript page if
-  you'd rather write it), and, for interludes and side stories, every character appearing for the first time. Chapters and
-  interludes told by Yuu skip the POV line; main chapters introduce their characters in the prose.
+- The italic `*( … )*` author note at the top of an interlude (also when it sits under a subtitle line) is
+  never shown. A **Before you read** box gives readers what they need instead:
+  - for interludes and side stories, the story's one-line intro: the `- Intro:` line on its wiki manuscript page;
+  - the point of view: the name from that page's `- POV:` line, or the note's "Name POV" opening, plus a
+    short "first person" / "third person" if given, and who she is (species and Intro line from her public
+    character page);
+  - for interludes and side stories, every character appearing for the first time.
+
+  Chapters and interludes told by Yuu skip the POV line; main chapters introduce their characters in the
+  prose. Lines can be written plain (`- POV: …`) or bold (`- **POV:** …`), and a character's species can be
+  `**Species:**` or `**Species and basics:**` (then the first sentence is used).
 
 **Author tier (password)**
 

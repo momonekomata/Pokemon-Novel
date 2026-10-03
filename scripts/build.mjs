@@ -71,7 +71,14 @@ const referenceByPath = new Map(reference.map((r) => [r.path, r]));
 // published chapter or side story: she's on the page, so readers need her card. (The spoiler shield
 // keeps her hidden from anyone who hasn't opened that story yet.)
 const cardConfig = config.characterCards || {};
-const characterPool = wiki.filter((p) => p.section === "characters" && config.wiki.readerSections.includes("characters") && /\*\*Species:\*\*/.test(p.src) && !(config.wiki.readerExclude || []).includes(p.rel));
+// "**Species:** Frosmoth" or "**Species and basics:** Frosmoth. 21, third-year …" (then the first sentence).
+const SPECIES_RE = /\*\*Species([^*:\n]*):\*\*\s*([^\n]+)/;
+const speciesOf = (src) => {
+  const m = src.match(SPECIES_RE);
+  if (!m) return "";
+  return m[1].trim() ? m[2].split(/(?<=[^A-Z.])\.\s|;\s/)[0] : m[2];
+};
+const characterPool = wiki.filter((p) => p.section === "characters" && config.wiki.readerSections.includes("characters") && SPECIES_RE.test(p.src) && !(config.wiki.readerExclude || []).includes(p.rel));
 const mentionedOnPage = new Set();
 {
   const poolIndex = buildNameIndex(characterPool.map((p) => ({ id: p.slug, name: p.title })), cardConfig);
@@ -232,10 +239,10 @@ const readerWikiUrl = (p) => `wiki/${p.section}/${p.slug}.html`;
 // ---------- Character cards ----------
 // Public character pages that describe a person (they have a "Species:" line), with what the card shows.
 const characters = cardConfig.enabled === false ? [] : readerWiki
-  .filter((p) => p.section === "characters" && /\*\*Species:\*\*/.test(p.src))
+  .filter((p) => p.section === "characters" && SPECIES_RE.test(p.src))
   .map((p) => {
     const src = stripAuthorNotes(p.src, config);
-    const species = (src.match(/\*\*Species:\*\*\s*([^\n]+)/) || [])[1] || "";
+    const species = speciesOf(src);
     const portrait = (src.match(/!\[\[[^\]]+\]\]|!\[[^\]]*\]\([^)]+\)/) || [])[0];
     let image = null;
     if (portrait) {
@@ -526,18 +533,23 @@ function povFor(c) {
   const styleSource = page?.pov ? raw.slice(raw.split(/[,(;]/)[0].length).replace(/^[\s,(;]+/, "") : fromNote?.[2] || "";
   const style = (styleSource.match(NARRATION) || [])[1]?.replace(/[\s,]+$/, "") || "";
   const id = [...nameIndex.keys()].sort((a, b) => b.length - a.length).find((n) => new RegExp(`(?<![\\p{L}])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "u").test(name));
-  return { name, style, intro: page?.intro ? plainInline(page.intro) : "", id: id ? nameIndex.get(id) : null };
+  return { name, style, id: id ? nameIndex.get(id) : null };
 }
 
 function introBox(c, newIds, povInfo) {
   const showPov = povInfo && !(introCfg.defaultPov && povInfo.name.toLowerCase().startsWith(introCfg.defaultPov.toLowerCase()));
+  // The chapter's own one-liner: "- Intro: …" on its wiki manuscript page. Shown for interludes and side
+  // stories (main chapters set themselves up in the prose).
+  const page = manuscriptPageFor.get(c.path);
+  const chapterIntro = (c.isInterlude || c.extra) && page?.intro ? renderInlineSummary(stripAuthorNotes(page.intro, config)) : "";
   // Main chapters introduce their characters in the prose; the list is for interludes and side stories,
   // where a reader may be meeting someone for the first time with no setup.
   const newcomers = c.isInterlude || c.extra ? [...newIds].map((id) => characterById.get(id)).filter((ch) => ch && ch.id !== povInfo?.id) : [];
-  if (!showPov && !newcomers.length) return "";
+  if (!showPov && !newcomers.length && !chapterIntro) return "";
   const charLink = (ch, label) => `<a class="char" href="${ch.url}" data-char="${ch.id}">${esc(label)}</a>`;
   const povChar = povInfo?.id && characterById.get(povInfo.id);
-  const about = povInfo?.intro || (povChar ? [povChar.species, povChar.summary].filter(Boolean).join(" · ") : "");
+  const about = povChar ? [povChar.species, povChar.summary].filter(Boolean).join(" · ") : "";
+  const storyHtml = chapterIntro ? `<p class="intro-story">${chapterIntro}</p>` : "";
   const povHtml = showPov
     ? `<div class="intro-row">
       <p class="intro-label">Point of view</p>
@@ -554,7 +566,7 @@ function introBox(c, newIds, povInfo) {
         .join("")}</ul>
     </div>`
     : "";
-  return `<aside class="chapter-intro" aria-label="Before you read">${povHtml}${newHtml}</aside>`;
+  return `<aside class="chapter-intro" aria-label="Before you read">${storyHtml}${povHtml}${newHtml}</aside>`;
 }
 
 function chapterPage(c, prev, next) {

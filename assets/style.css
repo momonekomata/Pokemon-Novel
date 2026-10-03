@@ -859,6 +859,8 @@ main.veiled > :not(.spoiler-veil):not(.crumbs) { filter: blur(8px); opacity: .35
 }
 .intro-row { display: grid; gap: 4px; }
 .intro-row + .intro-row { padding-top: 14px; border-top: 1px solid var(--faint); }
+.intro-story { margin: 0; font-family: var(--serif); font-size: 1.0625rem; font-style: italic; line-height: 1.55; }
+.intro-story + .intro-row { padding-top: 14px; border-top: 1px solid var(--faint); }
 .intro-label { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
 .intro-pov { margin: 0; font-family: var(--serif); font-size: 1.0625rem; font-weight: 600; }
 .intro-style { font-family: var(--sans); font-size: 13px; font-weight: 400; color: var(--muted); }
