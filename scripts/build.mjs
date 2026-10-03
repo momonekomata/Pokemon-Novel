@@ -451,30 +451,27 @@ function indexPage() {
 
 // ---------- "Before you read" box ----------
 // Whose point of view the chapter is told from, who she is, and the characters it introduces.
-// POV comes from the chapter's wiki manuscript page ("- POV: …"), else from the author note
-// ("Ohara POV, human, sixty-four, …"). The note's description is cut before planning notes
-// (manuscript.introBox.noteStopsAt) so placement and knowledge-state remarks never show.
+// The narrator's name comes from the chapter's wiki manuscript page ("- POV: …"), else from the
+// author note's opening ("Kirishima Mizore POV, first person. …"). The rest of the note is planning
+// text and never shown: "who she is" comes from her public wiki page (species and summary), or from
+// an "- Intro: …" line on the manuscript page if you want to write it yourself.
 const introCfg = config.manuscript.introBox || {};
 const manuscriptPageFor = new Map(wiki.filter((p) => p.manuscriptFile).map((p) => [p.manuscriptFile, p]));
 const characterById = new Map(characters.map((ch) => [ch.id, ch]));
 const plainInline = (md) => renderMarkdown(md, { link: () => null, image: () => null }).replace(/^<p>|<\/p>\s*$/g, "").replace(/<[^>]+>/g, "").trim();
-const stopRe = new RegExp(`\\b(?:${(introCfg.noteStopsAt || []).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i");
+const NARRATION = /^((?:first|second|third)[- ]person(?:[ ,]+(?:close|limited|omniscient|present|past)(?: tense)?)*)/i;
 
 function povFor(c) {
+  const page = manuscriptPageFor.get(c.path);
   const fromNote = c.note.match(/^(.+?)\s+POV\b[\s,;:.-]*([\s\S]*)$/i);
-  const pagePov = manuscriptPageFor.get(c.path)?.pov;
-  const pov = pagePov ? plainInline(stripAuthorNotes(pagePov, config)) : fromNote ? plainInline(fromNote[1]) : "";
-  let about = "";
-  if (fromNote && fromNote[2]) {
-    about = fromNote[2];
-    if (introCfg.noteStopsAt?.length) about = about.split(stopRe)[0];
-    about = plainInline(about).replace(/[\s.;,:(\u2014-]+$/, "");
-    if (about.length > 420) about = about.slice(0, about.lastIndexOf(" ", 420)) + "…";
-  }
-  if (!pov) return null;
-  const name = pov.split(/[,(;]/)[0].trim();
+  const raw = page?.pov ? plainInline(stripAuthorNotes(page.pov, config)) : fromNote ? plainInline(fromNote[1]) : "";
+  if (!raw) return null;
+  const name = raw.split(/[,(;]/)[0].replace(/\s+POV$/i, "").trim();
+  // Narration style: only a short "first person" / "third person, close" phrase, nothing else.
+  const styleSource = page?.pov ? raw.slice(raw.split(/[,(;]/)[0].length).replace(/^[\s,(;]+/, "") : fromNote?.[2] || "";
+  const style = (styleSource.match(NARRATION) || [])[1]?.replace(/[\s,]+$/, "") || "";
   const id = [...nameIndex.keys()].sort((a, b) => b.length - a.length).find((n) => new RegExp(`(?<![\\p{L}])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "u").test(name));
-  return { pov, name, about, id: id ? nameIndex.get(id) : null };
+  return { name, style, intro: page?.intro ? plainInline(page.intro) : "", id: id ? nameIndex.get(id) : null };
 }
 
 function introBox(c, newIds, povInfo) {
@@ -483,11 +480,12 @@ function introBox(c, newIds, povInfo) {
   if (!showPov && !newcomers.length) return "";
   const charLink = (ch, label) => `<a class="char" href="${ch.url}" data-char="${ch.id}">${esc(label)}</a>`;
   const povChar = povInfo?.id && characterById.get(povInfo.id);
+  const about = povInfo?.intro || (povChar ? [povChar.species, povChar.summary].filter(Boolean).join(" · ") : "");
   const povHtml = showPov
     ? `<div class="intro-row">
       <p class="intro-label">Point of view</p>
-      <p class="intro-pov">${povChar ? `${charLink(povChar, povInfo.pov.split(/[,(;]/)[0].trim())}${esc(povInfo.pov.slice(povInfo.pov.split(/[,(;]/)[0].length))}` : esc(povInfo.pov)}</p>
-      ${povInfo.about ? `<p class="intro-about">${esc(povInfo.about)}</p>` : povChar && (povChar.species || povChar.summary) ? `<p class="intro-about">${[povChar.species, povChar.summary].filter(Boolean).join(" · ")}</p>` : ""}
+      <p class="intro-pov">${povChar ? charLink(povChar, povInfo.name) : esc(povInfo.name)}${povInfo.style ? `<span class="intro-style"> · ${esc(povInfo.style)}</span>` : ""}</p>
+      ${about ? `<p class="intro-about">${about}</p>` : ""}
     </div>`
     : "";
   const newHtml = newcomers.length

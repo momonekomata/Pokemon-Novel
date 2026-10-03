@@ -19,8 +19,7 @@
     "hideLeadingAuthorNote": true,
     "introBox": {
       "enabled": true,
-      "defaultPov": "Yuu",
-      "noteStopsAt": ["Proposed placement", "Placement", "NEW CHARACTER", "Knowledge-state", "Knowledge state", "Interlude lens", "Status", "Slot", "Day anchor", "Continuity", "Gate"]
+      "defaultPov": "Yuu"
     }
   },
   "wiki": {
