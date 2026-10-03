@@ -7,7 +7,11 @@
   const save = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} };
 
   // ---------- Reading preferences ----------
-  const prefs = Object.assign({ theme: "auto", font: "serif", width: "normal", size: 100, illust: "show" }, load(PREFS_KEY));
+  const saved = load(PREFS_KEY);
+  // Version 2 made sans the default. Older saved settings always held the old default (serif), so
+  // forget that one setting once; a reader who picks Serif again keeps it.
+  if (saved.v !== 2) delete saved.font;
+  const prefs = Object.assign({ theme: "auto", font: "sans", width: "normal", size: 100, illust: "show" }, saved, { v: 2 });
 
   function apply() {
     if (prefs.theme === "auto") delete root.dataset.theme; else root.dataset.theme = prefs.theme;

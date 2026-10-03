@@ -192,8 +192,8 @@ const settingsPanel = `
   <div class="setting">
     <span class="setting-label">Font</span>
     <div class="seg" role="group" aria-label="Font">
-      <button data-set="font" data-value="serif" class="font-serif">Serif</button>
       <button data-set="font" data-value="sans" class="font-sans">Sans</button>
+      <button data-set="font" data-value="serif" class="font-serif">Serif</button>
     </div>
   </div>
   <div class="setting">
@@ -252,7 +252,7 @@ ${robots ? `<meta name="robots" content="${robots}">\n` : ""}<meta name="theme-c
   try { const p = JSON.parse(localStorage.getItem("reader-prefs") || "{}");
     const d = document.documentElement;
     if (p.theme && p.theme !== "auto") d.dataset.theme = p.theme;
-    if (p.font) d.dataset.font = p.font;
+    if (p.font && p.v === 2) d.dataset.font = p.font;
     if (p.width) d.dataset.width = p.width;
     if (p.illust) d.dataset.illust = p.illust;
     if (p.size) d.style.setProperty("--scale", p.size / 100);

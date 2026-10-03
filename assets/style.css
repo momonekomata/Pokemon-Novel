@@ -13,7 +13,7 @@
 
   --serif: "Literata", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --body-font: var(--serif);
+  --body-font: var(--sans);
 
   color-scheme: light;
 }
@@ -51,7 +51,7 @@
   }
 }
 
-:root[data-font="sans"] { --body-font: var(--sans); }
+:root[data-font="serif"] { --body-font: var(--serif); }
 :root[data-width="narrow"] { --measure: 32rem; }
 :root[data-width="wide"] { --measure: 42rem; }
 
@@ -353,7 +353,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   font-kerning: normal;
   overflow-wrap: break-word;
 }
-:root[data-font="sans"] .prose { font-size: calc(1.0625rem * var(--scale)); line-height: 1.7; }
+:root:not([data-font="serif"]) .prose { font-size: calc(1.0625rem * var(--scale)); line-height: 1.7; }
 
 .prose p { margin: 0 0 1.15em; text-wrap: pretty; }
 .prose em { font-style: italic; }
@@ -379,18 +379,24 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .prose blockquote p:last-child { margin-bottom: 0; }
 
+/* Scene break. Browsers clip <hr> contents, so it's sized to its dots rather than to a fixed
+   height; with a fixed height, a font with tall line spacing pushed the dots out of view. */
 .prose hr {
   border: 0;
   margin: 2.6em 0;
-  height: 1em;
+  height: auto;
+  overflow: visible;
+  line-height: 1;
   text-align: center;
 }
 .prose hr::before {
   content: "•  •  •";
+  display: block;
   white-space: pre;
   letter-spacing: .2em;
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: .7em;
+  line-height: 1;
   color: var(--muted);
 }
 
