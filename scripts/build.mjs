@@ -7,10 +7,15 @@ import { loadContent, isReaderPage, stripAuthorNotes, sha256 } from "../lib/cont
 import { escapeHtml as esc, renderMarkdown } from "../lib/markdown.mjs";
 import { deriveKey, encrypt, KDF_ITERATIONS } from "../lib/vault.mjs";
 import { buildNameIndex, linkCharacters } from "../lib/characters.mjs";
+import { chapterDiff } from "../lib/diff.mjs";
 
 const OUT = process.env.OUT_DIR || "_site";
 const CONTENT = process.env.CONTENT_DIR || "content";
 const UPDATES = process.env.UPDATES_FILE || "data/updates.json";
+// Last published text of each chapter, and the latest revision's diff ("What changed" pages).
+// Kept on the NAS next to updates.json; never committed (they hold chapter text).
+const SNAPSHOTS = process.env.SNAPSHOT_DIR || join(dirname(UPDATES), "snapshots");
+const CHANGES = join(dirname(SNAPSHOTS), "changes");
 const config = JSON.parse(readFileSync("site.config.json", "utf8"));
 
 if (!existsSync(CONTENT)) {
@@ -125,6 +130,27 @@ for (const c of chapters) {
 }
 mkdirSync(dirname(UPDATES), { recursive: true });
 writeFileSync(UPDATES, JSON.stringify(updates, null, 2) + "\n");
+
+mkdirSync(SNAPSHOTS, { recursive: true });
+mkdirSync(CHANGES, { recursive: true });
+const changes = new Map(); // slug -> { from, to, html, changed }
+for (const c of chapters) {
+  const snap = join(SNAPSHOTS, `${c.slug}.md`);
+  const changeFile = join(CHANGES, `${c.slug}.json`);
+  const before = existsSync(snap) ? readFileSync(snap, "utf8") : null;
+  if (before !== null && sha256(before.replace(/\s+/g, " ")) !== c.hash) {
+    const diff = chapterDiff(before, c.src);
+    if (diff.changed) {
+      const prev = previous?.[c.slug];
+      writeFileSync(changeFile, JSON.stringify({ hash: c.hash, from: prev?.updated || prev?.published || null, to: updates[c.slug].updated, ...diff }));
+    }
+  }
+  writeFileSync(snap, c.src);
+  if (existsSync(changeFile)) {
+    const ch = JSON.parse(readFileSync(changeFile, "utf8"));
+    if (ch.hash === c.hash) changes.set(c.slug, ch); // only the diff that led to the current text
+  }
+}
 
 const feed = chapters
   .map((c) => {
@@ -257,6 +283,7 @@ function topbar(base, current) {
     <a class="brand" href="${base}index.html">${esc(config.title)}</a>
     <nav class="topnav" aria-label="Site">${nav}</nav>
     <div class="topbar-actions">
+      <a class="icon-btn" href="${base}search.html" aria-label="Search"${current === "search" ? ' aria-current="page"' : ""}>${ICONS.search}</a>
       <button class="icon-btn" id="settings-toggle" aria-label="Reading settings" aria-expanded="false" aria-controls="settings">${ICONS.type}</button>
     </div>
   </div>
@@ -287,7 +314,7 @@ ${robots ? `<meta name="robots" content="${robots}">\n` : ""}<meta name="theme-c
     if (p.width) d.dataset.width = p.width;
     if (p.illust) d.dataset.illust = p.illust;
     if (p.cards) d.dataset.cards = p.cards;
-    if (p.size) d.style.setProperty("--scale", p.size / 100);
+    if (Number.isFinite(p.size)) d.style.setProperty("--scale", p.size / 100);
   } catch (e) {}
 </script>
 </head>
@@ -335,7 +362,7 @@ function indexPage() {
     <ul class="update-list">${feed
       .map(
         ({ c, kind, date }) => `
-      <li><a class="update-item" href="${c.slug}.html">
+      <li><a class="update-item" href="${kind === "Revised" && changes.has(c.slug) ? `changes/${c.slug}.html` : `${c.slug}.html`}">
         <span class="badge badge-${kind.toLowerCase()}">${kind}</span>
         <span class="update-title"><span class="update-label">${esc(c.label)}</span>${esc(c.title)}</span>
         <time datetime="${date}">${fmtDate(date)}</time>
@@ -391,7 +418,7 @@ function chapterPage(c, prev, next) {
   <header class="chapter-head">
     <p class="chapter-label">${esc(c.label)}</p>
     <h1 class="chapter-title">${esc(c.title)}</h1>
-    <p class="chapter-meta">${c.minutes} min read</p>
+    <p class="chapter-meta">${c.minutes} min read${changes.has(c.slug) ? ` · Revised ${fmtDate(changes.get(c.slug).to)} · <a href="changes/${c.slug}.html">See what changed</a>` : ""}</p>
   </header>
   <article class="prose">
 ${linkCharacters(renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") }), nameIndex, (id) => `wiki/characters/${id}.html`)}
@@ -402,6 +429,60 @@ ${linkCharacters(renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"
   </nav>
 </main>`;
   return layout({ title: `${c.title} · ${config.title}`, description: `${c.label}: ${c.title} — ${config.title}`, base: "", body, bodyClass: "page-chapter", current: "read" });
+}
+
+// ---------- Search ----------
+// One JSON file with the readable text of every chapter and public wiki page; search.js loads it on
+// the search page and searches it in the browser.
+const htmlToText = (html) =>
+  html
+    .replace(/<(p|li|h\d|tr|blockquote|figure|div|section)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*/g, "\n")
+    .trim();
+
+function searchIndex() {
+  const none = { link: () => null, image: () => null };
+  return [
+    ...chapters.map((c) => ({ k: "chapter", t: c.title, l: c.label, u: `${c.slug}.html`, x: htmlToText(renderMarkdown(c.src, none)) })),
+    ...readerWiki.map((p) => ({ k: "wiki", t: p.title, l: sectionTitle(p.section), u: readerWikiUrl(p), x: htmlToText(renderMarkdown(stripAuthorNotes(p.src, config).replace(/^#\s+.+\n?/m, ""), none)) })),
+  ];
+}
+
+function searchPage() {
+  const body = `
+<main class="wiki search-page">
+  <header class="wiki-head">
+    <h1 class="wiki-title">Search</h1>
+    <p class="wiki-lede">Every chapter and wiki page. Use "quotes" for an exact phrase.</p>
+  </header>
+  <form class="filter search-box" role="search" onsubmit="return false">${ICONS.search}<input type="search" id="search-input" placeholder="A name, a place, a line you remember…" autocomplete="off" aria-label="Search" autofocus></form>
+  <p class="search-status" id="search-status" aria-live="polite"></p>
+  <ol class="search-results" id="search-results"></ol>
+</main>`;
+  return layout({ title: `Search · ${config.title}`, base: "", body, bodyClass: "page-wiki", current: "search", scripts: ["reader.js", "search.js"] });
+}
+
+function changesPage(c) {
+  const ch = changes.get(c.slug);
+  const n = ch.changed;
+  const body = `
+<main class="wiki changes">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html#chapters">Chapters</a><span aria-hidden="true">›</span><span>${esc(c.label)}</span></nav>
+  <header class="wiki-head">
+    <p class="chapter-label">What changed</p>
+    <h1 class="wiki-title">${esc(c.title)}</h1>
+    <p class="wiki-lede">Revised ${fmtDate(ch.to)}${ch.from ? `, since the version of ${fmtDate(ch.from)}` : ""} · ${n} passage${n === 1 ? "" : "s"} changed</p>
+    <div class="changes-actions">
+      <a class="btn btn-primary" href="../${c.slug}.html">Read the chapter</a>
+      <span class="legend"><ins>added</ins> <del>removed</del></span>
+    </div>
+  </header>
+  <article class="diff">${ch.html}</article>
+</main>`;
+  return layout({ title: `What changed: ${c.title} · ${config.title}`, base: "../", body, bodyClass: "page-wiki", current: "read" });
 }
 
 function wikiDirectory(pages, base, hrefFor, intro) {
@@ -621,7 +702,10 @@ writeFileSync(join(OUT, ".nojekyll"), "");
 write("index.html", indexPage());
 main.forEach((c, i) => write(`${c.slug}.html`, chapterPage(c, main[i - 1], main[i + 1])));
 extras.forEach((c, i) => write(`${c.slug}.html`, chapterPage(c, extras[i - 1], extras[i + 1])));
+chapters.filter((c) => changes.has(c.slug)).forEach((c) => write(`changes/${c.slug}.html`, changesPage(c)));
 write("wiki/index.html", readerWikiIndex());
+write("search.html", searchPage());
+write("search-index.json", JSON.stringify(searchIndex()));
 readerWiki.forEach((p) => write(readerWikiUrl(p), readerWikiPage(p)));
 write("characters.json", JSON.stringify(Object.fromEntries(characters.map(({ id, name, species, summary, image, url }) => [id, { name, species, summary, image, url }]))));
 const authorPages = await buildAuthorTier();

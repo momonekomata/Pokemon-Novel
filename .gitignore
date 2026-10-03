@@ -11,3 +11,7 @@ tailscale-state/*
 !public/.gitkeep
 !tailscale-state/.gitkeep
 .deployed-commit
+
+# Chapter text kept by the build for "What changed" pages (NAS only)
+data/snapshots/
+data/changes/

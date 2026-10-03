@@ -12,6 +12,7 @@
   // forget that one setting once; a reader who picks Serif again keeps it.
   if (saved.v !== 2) delete saved.font;
   const prefs = Object.assign({ theme: "auto", font: "sans", width: "normal", size: 100, illust: "show", cards: "on" }, saved, { v: 2 });
+  if (!Number.isFinite(prefs.size)) prefs.size = 100; // repair a size saved as NaN by an earlier bug
 
   function apply() {
     if (prefs.theme === "auto") delete root.dataset.theme; else root.dataset.theme = prefs.theme;
@@ -30,9 +31,9 @@
 
   document.addEventListener("click", (e) => {
     const set = e.target.closest("[data-set]");
-    const step = e.target.closest("[data-step]");
+    const step = e.target.closest('[data-step="size"]');
     if (set) prefs[set.dataset.set] = set.dataset.value;
-    else if (step) prefs.size = Math.min(150, Math.max(80, prefs.size + Number(step.dataset.dir) * 10));
+    else if (step) prefs.size = Math.min(150, Math.max(80, prefs.size + (Number(step.dataset.dir) || 0) * 10));
     else return;
     save(PREFS_KEY, prefs);
     apply();
@@ -149,6 +150,69 @@
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCard(); });
   window.addEventListener("resize", closeCard);
+
+  // ---------- Search matches: chapter opened from a search result (#find=…) ----------
+  (function highlightFind() {
+    const m = location.hash.match(/^#find=(.+)$/);
+    const prose = document.querySelector(".prose");
+    if (!m || !prose) return;
+    const query = decodeURIComponent(m[1]);
+    const fold = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"').toLowerCase();
+    const foldKeep = (t) => [...t].map((ch) => fold(ch)[0] || ch).join("");
+    const terms = [];
+    query.replace(/"([^"]+)"|(\S+)/g, (_, phrase, word) => { terms.push(fold(phrase || word)); });
+    const wanted = terms.filter((t) => t.length > 1 || /\d/.test(t));
+    if (!wanted.length) return;
+    const marks = [];
+    const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const text = node.nodeValue.normalize("NFC");
+      const folded = foldKeep(text);
+      const found = [];
+      for (const t of wanted) for (let i = folded.indexOf(t); i >= 0; i = folded.indexOf(t, i + t.length)) found.push([i, i + t.length]);
+      if (!found.length) continue;
+      found.sort((a, b) => a[0] - b[0]);
+      const frag = document.createDocumentFragment();
+      let pos = 0;
+      for (const [a, b] of found) {
+        if (a < pos) continue;
+        frag.append(text.slice(pos, a));
+        const mark = document.createElement("mark");
+        mark.className = "find";
+        mark.textContent = text.slice(a, b);
+        frag.append(mark);
+        marks.push(mark);
+        pos = b;
+      }
+      frag.append(text.slice(pos));
+      node.replaceWith(frag);
+    }
+    if (!marks.length) return;
+    let current = -1;
+    const bar = document.createElement("div");
+    bar.className = "find-bar";
+    bar.innerHTML = `<span class="find-count"></span><button type="button" data-find-step="-1" aria-label="Previous match">↑</button><button type="button" data-find-step="1" aria-label="Next match">↓</button><button type="button" data-find-close aria-label="Clear highlights">×</button>`;
+    const show = (i) => {
+      marks[current]?.classList.remove("find-current");
+      current = (i + marks.length) % marks.length;
+      marks[current].classList.add("find-current");
+      marks[current].scrollIntoView({ block: "center", behavior: "smooth" });
+      bar.querySelector(".find-count").textContent = `${current + 1} of ${marks.length}`;
+    };
+    bar.addEventListener("click", (e) => {
+      const step = e.target.closest("[data-find-step]");
+      if (step) return show(current + Number(step.dataset.findStep));
+      if (e.target.closest("[data-find-close]")) {
+        marks.forEach((mk) => mk.replaceWith(mk.textContent));
+        bar.remove();
+        history.replaceState(null, "", location.pathname);
+      }
+    });
+    document.body.appendChild(bar);
+    requestAnimationFrame(() => show(0));
+  })();
 
   // ---------- Illustrations: tap to view full-screen ----------
   document.addEventListener("click", (e) => {

@@ -83,6 +83,20 @@ pictures, gaps in chapter numbers, duplicate chapter numbers, interludes not yet
 given names too ambiguous for character cards, wiki pages held back from readers, and chapter-like files
 that weren't published as chapters. The builder log also prints a one-line summary.
 
+## Search
+
+The magnifying glass at the top searches every chapter and public wiki page. Matching ignores capitals,
+accents (ō = o) and curly vs straight quotes; several words must all appear, and `"quoted words"` must appear
+together. Opening a chapter from the results highlights every match, with ↑ ↓ to jump between them.
+
+## What changed
+
+When a chapter's text changes, the build compares it with the previous version. "Latest updates" then
+links the **Revised** chapter to a page showing just the changed passages (added words in green, removed
+words struck through), and the chapter itself says "Revised … · See what changed". Only the latest revision
+is shown. The previous versions are kept in `data/snapshots/` on the NAS (never committed); the first build
+after this feature only records them, so differences show from the next edit on.
+
 ## Hosting on a Synology NAS instead
 
 To run the site on your own NAS, visible only on your Tailscale network, follow
@@ -140,3 +154,5 @@ You can also point the build at any folder laid out like the Drive folder: `CONT
 - Wiki filter box for finding a character or place quickly
 - Illustrations between paragraphs; tap to view full-screen, or switch them off
 - Character cards: tap a character's name for a quick reminder of who she is
+- Search across every chapter and wiki page, with matches highlighted in the chapter
+- "What changed" pages for revised chapters
