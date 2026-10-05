@@ -4,8 +4,9 @@ Pokemon alternated reality novel, and the website for reading it.
 
 The site is built from the novel's Google Drive folder (**Pokemon Novel - Reference Files and Chapters**).
 Every hour a GitHub Action pulls the Markdown files from Drive, rebuilds the site and publishes it to
-GitHub Pages. Nothing from Drive is committed to this repository; the only thing the Action commits back
-is `data/updates.json`, the revision log behind "Latest updates".
+Cloudflare Pages (free, always on; setup in [cloudflare/README.md](cloudflare/README.md)). A second copy
+can run on a Synology NAS over Tailscale ([nas/README.md](nas/README.md)). Nothing from Drive is committed
+to this repository.
 
 ## What gets published
 
@@ -162,6 +163,13 @@ In the author area: total words, words this week and over the last 30 days, chap
 longest chapter, a chart of total words over time (hover or use ← → for exact numbers, or open it as a
 table) and words per chapter. The history is one total per day, kept in `data/stats.json` on the NAS.
 The first build estimates earlier days from when each chapter file was created in Drive.
+
+## Hosting on Cloudflare Pages (free)
+
+Follow [cloudflare/README.md](cloudflare/README.md): a free Cloudflare account, four GitHub secrets, and
+optionally Cloudflare Access so only people you list can open the site. The workflow is
+`.github/workflows/cloudflare.yml`; it keeps the revision log and "What changed" snapshots in the
+Actions cache, never in git.
 
 ## Hosting on a Synology NAS instead
 

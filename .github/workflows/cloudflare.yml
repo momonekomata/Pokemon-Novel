@@ -1,0 +1,102 @@
+name: Sync from Drive and publish to Cloudflare
+
+# Every hour GitHub pulls the chapters and wiki from Google Drive, builds the site and uploads it to
+# Cloudflare Pages. Nothing here depends on the NAS. Setup: see cloudflare/README.md.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare
+  cancel-in-progress: false
+
+env:
+  PROJECT: ${{ vars.CLOUDFLARE_PROJECT || 'manyo' }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Until the secrets are added (cloudflare/README.md), runs end here quietly instead of failing.
+      - name: Check setup
+        id: ready
+        env:
+          HAS_SECRETS: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.GOOGLE_SERVICE_ACCOUNT_JSON != '' && secrets.AUTHOR_PASSWORD != '' }}
+        run: |
+          if [ "$HAS_SECRETS" = "true" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::Cloudflare publishing isn't set up yet: add the four secrets listed in cloudflare/README.md."; fi
+
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.ready.outputs.ok == 'true'
+
+      # The revision log, chapter snapshots ("What changed") and word-count history. They hold chapter
+      # text, so they live in the Actions cache (private to this repository), never in git.
+      - name: Restore site history
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: site-data-${{ github.run_id }}
+          restore-keys: site-data-
+
+      - name: Pull chapters and wiki from Google Drive
+        if: steps.ready.outputs.ok == 'true'
+        run: npm run sync
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+
+      # Skip the rest when nothing changed: same Drive files, same code, same day (the stats page counts
+      # "this week", so it refreshes at least daily).
+      - name: Check for changes
+        id: check
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          mkdir -p data
+          stamp="$(sha256sum content/.drive-meta.json | cut -c1-64) ${GITHUB_SHA} $(date -u +%F)"
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ -f data/.last-publish ] && [ "$(cat data/.last-publish)" = "$stamp" ]; then
+            echo "Nothing changed since the last publish."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$stamp" > data/.next-publish
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build site
+        if: steps.check.outputs.changed == 'true'
+        run: npm run build
+        env:
+          AUTHOR_PASSWORD: ${{ secrets.AUTHOR_PASSWORD }}
+
+      - name: Upload to Cloudflare Pages
+        if: steps.check.outputs.changed == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          preCommands: npx wrangler pages project create "${{ env.PROJECT }}" --production-branch=main || true
+          command: pages deploy _site --project-name=${{ env.PROJECT }} --branch=main --commit-dirty=true
+
+      - name: Remember this publish
+        if: steps.check.outputs.changed == 'true'
+        run: mv data/.next-publish data/.last-publish
+
+      - name: Save site history
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: site-data-${{ github.run_id }}
