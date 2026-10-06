@@ -3,7 +3,8 @@
 This puts the site on the internet at an address like `https://manyo.pages.dev`, reachable from any
 phone or computer, whether or not your NAS or your home internet is on. It costs nothing:
 
-- **GitHub** does the work: every hour it pulls your chapters from Google Drive and builds the site. It only
+- **GitHub** does the work: every hour it pulls your chapters (from Google Drive, or from the vault
+  repository, see below) and builds the site. It only
   rebuilds when something changed, so the free allowance for private repositories (2,000 minutes a month)
   is plenty.
 - **Cloudflare Pages** serves the site. It's free, with no limit on visitors.
@@ -100,6 +101,33 @@ area is always safe either way: it's encrypted with your author password.
 
 Now opening the site asks for your email and sends a one-time code. Once you've entered it, the browser
 remembers you for a while (24 hours by default, adjustable in the application's settings).
+
+## Reading the novel from the vault
+
+Since October 2026 the novel's text lives in its own private repository,
+**momonekomata/pokemon-novel-vault**, and Google Drive keeps only the illustrations (plus a read-only
+mirror of the text). The site follows that with one setting: `"source"` in `site.config.json`.
+
+- `"source": "drive"` (the old way): chapters, wiki and illustrations all come from Google Drive.
+- `"source": "vault"`: chapters and wiki come from the vault repository; only the illustrations come from
+  Drive. Each page's dates come from git, and files untouched since the move keep their Drive dates.
+
+To switch, do these two things, in this order:
+
+1. **Make a vault token.** On GitHub: your picture (top right) → **Settings** → **Developer settings** →
+   **Personal access tokens** → **Fine-grained tokens** → **Generate new token**. Name it
+   `manyo-site vault (read)`, pick an expiry (a year is fine; set a calendar reminder), and under
+   **Repository access** choose **Only select repositories** → `pokemon-novel-vault`. Under
+   **Permissions** → **Repository permissions**, set **Contents** to **Read-only** (Metadata turns on by
+   itself). Generate it and copy it.
+2. **Add it as a secret** in this repository: **Settings** → **Secrets and variables** → **Actions** →
+   **New repository secret**, name `VAULT_TOKEN`, paste, save.
+3. **Flip the switch**: change `"source": "drive"` to `"source": "vault"` in `site.config.json` on the
+   default branch. The next hourly run reads from the vault. To go back, set it to `"drive"` again;
+   nothing else needs undoing.
+
+If the switch says `"vault"` and the secret is missing, the run stops with a clear message instead of
+publishing an empty site.
 
 ## The NAS
 

@@ -1,5 +1,10 @@
 // Mirrors the novel's Google Drive folder into content/ so the build can read it.
 //
+// SYNC_SCOPE=images (used when site.config.json has "source": "vault"): download only the
+// illustrations, because the text then comes from the vault repository (scripts/sync-vault.mjs).
+// The Markdown files (root and wiki/) are still LISTED, never downloaded, so their Drive dates can
+// keep the site's history continuous across the move.
+//
 // Needs GOOGLE_SERVICE_ACCOUNT_JSON (the service account's key file contents),
 // or GOOGLE_SERVICE_ACCOUNT_FILE (a path to that key file).
 // The Drive folder must be shared with that service account's email address.
@@ -88,12 +93,22 @@ async function walk(token, folderId, prefix, out) {
   }
 }
 
+const IMAGES_ONLY = process.env.SYNC_SCOPE === "images";
+const IMAGE = /\.(jpe?g|png|webp|gif|avif)$/i;
 const token = await accessToken();
 const files = [];
+const listedOnly = []; // images scope: Markdown listed for its dates, never downloaded
 for (const f of await listFolder(token, config.drive.folderId)) {
-  if (f.mimeType === FOLDER && subfolders.has(f.name)) await walk(token, f.id, f.name, files);
-  else if (isWanted(f)) files.push({ ...f, path: f.name });
+  if (f.mimeType === FOLDER) {
+    if (!subfolders.has(f.name)) continue;
+    // Images scope: the wiki is listed for its dates only, never downloaded.
+    await walk(token, f.id, f.name, IMAGES_ONLY && f.name === config.drive.wikiFolder ? listedOnly : files);
+  } else if (isWanted(f)) {
+    if (IMAGES_ONLY && !IMAGE.test(f.name)) listedOnly.push({ ...f, path: f.name });
+    else files.push({ ...f, path: f.name });
+  }
 }
+if (IMAGES_ONLY) for (let i = files.length - 1; i >= 0; i--) if (!IMAGE.test(files[i].name)) files.splice(i, 1);
 
 rmSync(OUT, { recursive: true, force: true });
 const meta = {};
@@ -109,5 +124,9 @@ await Promise.all(Array.from({ length: 8 }, async () => {
     done++;
   }
 }));
-writeFileSync(join(OUT, ".drive-meta.json"), JSON.stringify(meta, null, 2));
-console.log(`Synced ${done} files (chapters, wiki pages and images) from Drive into ${OUT}/`);
+for (const f of listedOnly) meta[f.path] = { id: f.id, createdTime: f.createdTime, modifiedTime: f.modifiedTime, listedOnly: true };
+const sorted = Object.fromEntries(Object.keys(meta).sort().map((k) => [k, meta[k]]));
+writeFileSync(join(OUT, ".drive-meta.json"), JSON.stringify(sorted, null, 2));
+console.log(IMAGES_ONLY
+  ? `Synced ${done} images from Drive into ${OUT}/ (text comes from the vault; ${listedOnly.length} Markdown files listed for their dates only)`
+  : `Synced ${done} files (chapters, wiki pages and images) from Drive into ${OUT}/`);

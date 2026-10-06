@@ -14,7 +14,7 @@ const { GITHUB_TOKEN, GITHUB_REPO = "momonekomata/Pokemon-Novel", GITHUB_BRANCH 
 const APP = process.cwd();
 const STAMP = join(APP, ".deployed-commit");
 // Never overwritten: everything the NAS owns.
-const KEEP = new Set(["settings.env", "secrets", "public", "tailscale-state", "content", "data", "node_modules", "_site", ".deployed-commit"]);
+const KEEP = new Set(["settings.env", "secrets", "public", "tailscale-state", "content", "data", "node_modules", "_site", ".deployed-commit", "vault", "drive-mirror", "mirror-state"]);
 
 const log = (msg) => console.log(`[${new Date().toISOString().slice(0, 16).replace("T", " ")}] ${msg}`);
 const hashFile = (p) => (existsSync(p) ? createHash("sha256").update(readFileSync(p)).digest("hex") : "");

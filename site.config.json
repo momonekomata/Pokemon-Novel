@@ -4,6 +4,11 @@
   "author": "Parinya",
   "description": "A Pokémon alternate-reality romance, published chapter by chapter.",
   "lang": "en",
+  "source": "drive",
+  "vault": {
+    "repository": "momonekomata/pokemon-novel-vault",
+    "branch": "main"
+  },
   "drive": {
     "folderId": "1q2gqaHN9QQJ5V1-lWrgh__np4ENZquH8",
     "wikiFolder": "wiki",

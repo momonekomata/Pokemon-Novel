@@ -16,3 +16,9 @@ tailscale-state/*
 data/snapshots/
 data/changes/
 data/stats.json
+
+# The novel's text, checked out from the vault repository at build time (source: "vault").
+vault/
+# The NAS copy of the vault that Synology Cloud Sync uploads to Google Drive (nas/README.md).
+drive-mirror/
+mirror-state/

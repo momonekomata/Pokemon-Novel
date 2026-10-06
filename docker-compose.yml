@@ -25,7 +25,7 @@ services:
       - tailscale
     restart: unless-stopped
 
-  # Pulls chapters and wiki from Google Drive and rebuilds the site on a timer.
+  # Pulls chapters and wiki (from Google Drive, or from the vault repository) and rebuilds the site on a timer.
   builder:
     image: node:22-alpine
     working_dir: /app
@@ -34,4 +34,17 @@ services:
     volumes:
       - ./:/app
       - ./public:/public
+    restart: unless-stopped
+
+  # Keeps drive-mirror/ in step with the vault repository, as plain files, every hour. Synology Cloud Sync
+  # uploads that folder to Google Drive one way, so Drive stays a read-only copy (nas/README.md,
+  # "Google Drive mirror"). Independent of the site: it can run on its own with `docker compose up -d mirror`.
+  mirror:
+    image: alpine:3
+    command: sh /app/nas/mirror.sh
+    env_file: settings.env # VAULT_TOKEN, optional VAULT_REPO, VAULT_BRANCH, MIRROR_INTERVAL_MINUTES
+    volumes:
+      - ./nas/mirror.sh:/app/nas/mirror.sh:ro
+      - ./drive-mirror:/mirror
+      - ./mirror-state:/state
     restart: unless-stopped

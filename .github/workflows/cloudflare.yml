@@ -1,7 +1,8 @@
 name: Sync from Drive and publish to Cloudflare
 
-# Every hour GitHub pulls the chapters and wiki from Google Drive, builds the site and uploads it to
-# Cloudflare Pages. Nothing here depends on the NAS. Setup: see cloudflare/README.md.
+# Every hour GitHub pulls the chapters and wiki (from Google Drive, or from the vault repository when
+# site.config.json says "source": "vault"), builds the site and uploads it to Cloudflare Pages. Nothing
+# here depends on the NAS. Setup: see cloudflare/README.md.
 on:
   workflow_dispatch:
   push:
@@ -53,13 +54,42 @@ jobs:
           key: site-data-${{ github.run_id }}
           restore-keys: site-data-
 
-      - name: Pull chapters and wiki from Google Drive
+      # Where the chapters and wiki come from: "source" in site.config.json. "drive" (the default) pulls
+      # everything from Google Drive; "vault" takes the text from the private vault repository and only the
+      # illustrations from Drive.
+      - name: Where does the text come from?
+        id: source
+        if: steps.ready.outputs.ok == 'true'
+        run: echo "source=$(node -p "require('./site.config.json').source || 'drive'")" >> "$GITHUB_OUTPUT"
+
+      - name: Check the vault token
+        if: steps.ready.outputs.ok == 'true' && steps.source.outputs.source == 'vault'
+        env:
+          HAS_VAULT_TOKEN: ${{ secrets.VAULT_TOKEN != '' }}
+        run: |
+          if [ "$HAS_VAULT_TOKEN" != "true" ]; then
+            echo "::error::site.config.json says \"source\": \"vault\" but the VAULT_TOKEN secret is missing (cloudflare/README.md, \"Reading the novel from the vault\")."
+            exit 1
+          fi
+
+      # Full history, so each page's dates can come from git.
+      - name: Check out the novel from the vault
+        if: steps.ready.outputs.ok == 'true' && steps.source.outputs.source == 'vault'
+        uses: actions/checkout@v4
+        with:
+          repository: momonekomata/pokemon-novel-vault
+          ref: main
+          token: ${{ secrets.VAULT_TOKEN }}
+          path: vault
+          fetch-depth: 0
+
+      - name: Pull chapters, wiki and illustrations
         if: steps.ready.outputs.ok == 'true'
         run: npm run sync
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
 
-      # Skip the rest when nothing changed: same Drive files, same code, same day (the stats page counts
+      # Skip the rest when nothing changed: same files, same code, same day (the stats page counts
       # "this week", so it refreshes at least daily).
       - name: Check for changes
         id: check

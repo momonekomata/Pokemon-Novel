@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "sync": "node scripts/sync-drive.mjs",
+    "sync": "node scripts/sync.mjs",
     "build": "node scripts/build.mjs",
     "preview": "node scripts/build.mjs && python3 -m http.server -d _site 8000"
   },

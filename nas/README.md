@@ -259,6 +259,47 @@ Two things it can't do alone, and will tell you about in the log:
 
 ---
 
+## Reading the novel from the vault
+
+When `site.config.json` says `"source": "vault"`, the builder takes the chapters and wiki from the private
+vault repository (momonekomata/pokemon-novel-vault) and only the illustrations from Google Drive.
+
+1. Make a **read-only vault token** exactly as in `cloudflare/README.md`, "Reading the novel from the vault",
+   step 1 (you can reuse the same token for both).
+2. Open `settings.env` on the NAS and fill in `VAULT_TOKEN=` with it. If your `settings.env` is older than
+   this section, copy the `VAULT_…` and `MIRROR_INTERVAL_MINUTES` lines from `nas/settings.example.env`.
+3. In Container Manager → **Project** → your project → **Action** → **Restart**.
+
+The builder installs git the first time it needs it and keeps a build-only copy of the vault in `vault/`.
+Nobody edits that copy, so it simply resets to GitHub's version on every pass.
+
+## Google Drive mirror
+
+The `mirror` container keeps `drive-mirror/` (inside this project folder) identical to the vault, as plain
+files, checking every hour. **Synology Cloud Sync** then uploads that folder to the novel's Google Drive
+folder, so Drive stays a read-only copy you can browse in the Drive app. It runs on its own: you don't need
+the site running to use it.
+
+1. Make sure `VAULT_TOKEN` is in `settings.env` (above). Restart the project; within a minute
+   `drive-mirror/` fills with the novel's text. The container's log says `Mirror at <commit>`.
+2. Install **Cloud Sync** from Package Center if you don't have it.
+3. In Cloud Sync, **+** → **Google Drive** → sign in with the Google account that owns the novel's folder.
+4. Set up the task:
+   - **Local path**: this project's `drive-mirror` folder (for example `docker/manyo-site/drive-mirror`).
+   - **Remote path**: the existing folder **Pokemon Novel - Reference Files and Chapters**. Use the existing
+     folder, not a new one, so files keep their Drive links.
+   - **Sync direction**: **Upload local changes only**.
+   - Tick **Don't remove files in the destination folder when they are removed in the source folder**.
+     This is the setting that protects the illustrations: they exist only in Drive, never in the mirror,
+     so without it Cloud Sync could treat them as deleted.
+5. As a second safety net, in the task's filter settings (called "Selective sync" or "File filter",
+   depending on your DSM version), exclude anything named `illustrations` and `.git`. The mirror never
+   contains either, so this only matters if something goes wrong.
+6. Save. The first run uploads every text file once; after that only changes go up.
+
+**Never edit text in the Drive folder after the switch.** The next mirror run overwrites it. Edit through a
+Claude session, Obsidian on your computer, or GitHub, and the change reaches Drive within the hour.
+
 ## If something goes wrong
 
 Look at the **builder** log first (Step 8). Find the line that says `FAILED` and read the line just above it.
