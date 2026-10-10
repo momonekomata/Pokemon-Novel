@@ -9,7 +9,7 @@ import { deriveKey, encrypt, KDF_ITERATIONS } from "../lib/vault.mjs";
 import { buildNameIndex, linkCharacters } from "../lib/characters.mjs";
 import { chapterDiff } from "../lib/diff.mjs";
 import { parseTidyReport, parseAmbiguities } from "../lib/tidy.mjs";
-import { parseQuizLines, lineInChapter } from "../lib/quiz.mjs";
+import { parseQuizLines, lineInChapter, mineLines } from "../lib/quiz.mjs";
 
 const OUT = process.env.OUT_DIR || "_site";
 const CONTENT = process.env.CONTENT_DIR || "content";
@@ -647,12 +647,14 @@ function searchPage() {
 
 // ---------- Extras (reader tier) ----------
 // Two small games on extras.html, both behind the spoiler shield (extras.js asks it what the reader
-// has opened): Who Said It?, from the lines in Quiz_Lines.md, and Cast Shuffle, an interlude-prompt
-// toy built from the public character pages plus the places, moods and sparks in site.config.json.
+// has opened): Who Said It?, from the lines in Quiz_Lines.md plus lines mined from every chapter, and
+// Cast Shuffle, an interlude-prompt toy built from the public character pages, the places, moods and
+// sparks in Cast_Shuffle.md, and more places from the wiki's locations page.
 const plainText = (html) => html.replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").trim();
 // Just the species ("Dachsbun, a pure Fairy. Box entry #927 …" → "Dachsbun"): the games show it small.
 const shortSpecies = (html) => plainText(html).split(/[,.;(]|\s[—–-]\s/)[0].trim();
 const quizProblems = []; // for the build report
+let minedCount = 0;
 const quizFile = extrasCfg.enabled ? reference.find((r) => r.path.toLowerCase() === (extrasCfg.quizFile || "Quiz_Lines.md").toLowerCase()) : null;
 const quiz = (() => {
   if (!quizFile) return { lines: [], speakers: {} };
@@ -672,6 +674,25 @@ const quiz = (() => {
     speakers[key] ||= { name: q.name || ch.name, page: ch.id, species: q.name ? "" : shortSpecies(ch.species), url: ch.url };
     out.push({ t: q.text, s: key, c: c.slug, l: c.label, n: c.title, h: q.hint });
   }
+  // Then lines mined from every published chapter (lib/quiz.mjs, mineLines), so the quiz grows as the
+  // story does. Hand-picked lines win; at most perChapter mined lines come from any one chapter.
+  if (extrasCfg.autoQuiz !== false) {
+    const fold = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    const have = new Set(out.map((q) => fold(q.t)));
+    const perChapter = extrasCfg.autoQuizPerChapter ?? 8;
+    for (const c of chapters) {
+      const found = mineLines(c.src, nameIndex).filter((m) => characterById.has(m.id) && !have.has(fold(m.text)));
+      const step = Math.max(1, found.length / perChapter);
+      for (let i = 0; i < found.length && out.length < 5000; i += step) {
+        const m = found[Math.floor(i)];
+        const ch = characterById.get(m.id);
+        have.add(fold(m.text));
+        speakers[m.id] ||= { name: ch.name, page: ch.id, species: shortSpecies(ch.species), url: ch.url };
+        out.push({ t: m.text, s: m.id, c: c.slug, l: c.label, n: c.title, h: "" });
+        minedCount++;
+      }
+    }
+  }
   return { lines: out, speakers };
 })();
 
@@ -690,13 +711,56 @@ function readShuffle() {
   return lists;
 }
 
+// More places for Cast Shuffle, from the public locations page (extras.placesPage): each "### Name"
+// heading (a heading listing several, "The alley, the pork bun stand, …", gives one each) and each
+// "- **Name:**" item. Only names, never the page's notes, and only places whose entry links a published
+// chapter: the place then unlocks for readers who have opened that chapter. Places in Cast_Shuffle.md
+// come first and keep their notes.
+function wikiPlaces() {
+  const page = wiki.find((p) => p.rel === (extrasCfg.placesPage || "world/locations.md"));
+  if (!page || !readerWiki.includes(page)) return [];
+  const chapterOf = (body) => {
+    for (const [, href] of body.matchAll(/\]\(([^)]*manuscript\/[^)#]+)/g)) {
+      const target = wikiByPath.get(posix.normalize(posix.join(posix.dirname(page.path), href)));
+      const c = target?.manuscriptFile && chapterByFile.get(target.manuscriptFile);
+      if (c) return c.slug;
+    }
+    return null;
+  };
+  const clean = (n) => n.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\s*\([^)]*\)/g, "").replace(/[*_`]/g, "").trim();
+  const cap = (n) => n.charAt(0).toUpperCase() + n.slice(1);
+  const out = [];
+  const add = (names, body) => {
+    const slug = chapterOf(body);
+    if (!slug) return;
+    for (const n of names) if (n && n.length <= 60 && !/^(how to|named places|see also|related|sources)/i.test(n)) out.push({ name: cap(n), note: "", a: [slug] });
+  };
+  // "### " blocks give their heading (the bullets inside are notes about that place); sections with no
+  // "### " give their "- **Name:**" items, as in a list of places.
+  for (const block of page.src.split(/^(?=##? )/m)) {
+    const subs = block.split(/^(?=### )/m);
+    for (const sub of subs) {
+      const h = sub.match(/^### +(.+)$/m);
+      if (h) add(clean(h[1]).split(/,\s+(?:and\s+)?/), sub);
+      else if (subs.length === 1) for (const [, name, rest] of sub.matchAll(/^- \*\*([^*:]+):?\*\*:?(.*)$/gm)) add([clean(name)], rest);
+    }
+  }
+  return out;
+}
+
 function extrasData() {
   const shuffle = readShuffle();
   return {
     characters: characters.map((ch) => ({ id: ch.id, name: ch.name, species: shortSpecies(ch.species), intro: plainText(ch.summary), url: ch.url, a: appearances.get(ch.id) || [] })),
     speakers: quiz.speakers,
     quiz: quiz.lines,
-    places: (shuffle.places || []).map((p) => { const [name, note = ""] = p.split(/\s+[—–]\s+/); return { name, note }; }),
+    places: (() => {
+      const curated = (shuffle.places || []).map((p) => { const [name, note = ""] = p.split(/\s+[—–]\s+/); return { name, note }; });
+      const key = (n) => n.toLowerCase().replace(/^the\s+/, "").replace(/[^\p{L}\p{N}]+/gu, "");
+      const seen = new Set(curated.map((p) => key(p.name)));
+      const extra = extrasCfg.wikiPlaces === false ? [] : wikiPlaces().filter((p) => !seen.has(key(p.name)) && seen.add(key(p.name)));
+      return [...curated, ...extra];
+    })(),
     moods: shuffle.moods || [],
     sparks: shuffle.sparks || [],
   };

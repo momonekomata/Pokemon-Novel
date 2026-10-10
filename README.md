@@ -24,9 +24,11 @@ encrypted in the build (PBKDF2 + AES-256-GCM) and only open with the author pass
 - A "Before you read" box for interludes: the story's intro, the point of view, and newcomers
 - Character cards on first mention, and a spoiler shield for characters not met yet
 - Illustrations between paragraphs, search, "Latest updates" and "What changed" pages
-- Extras: a "Who Said It?" quiz (lines listed in `Quiz_Lines.md` in the text repository, each checked
-  against its chapter at build time) and a "Cast Shuffle" prompt toy (places, moods and sparks from
-  `Cast_Shuffle.md` in the text repository), both behind the spoiler shield
+- Extras: a "Who Said It?" quiz and a "Cast Shuffle" prompt toy, both behind the spoiler shield and both
+  growing with the story. The quiz uses hand-picked lines (`Quiz_Lines.md` in the text repository, each
+  checked against its chapter) plus lines mined from every chapter where a speech tag names the speaker.
+  Cast Shuffle deals met characters, places (`Cast_Shuffle.md`, plus places linked to a chapter on the
+  wiki's locations page), moods and sparks.
 - Author area: the full wiki, reference files, a build report, a tidy board for the wiki's punch list,
   and writing stats
 

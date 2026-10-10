@@ -37,6 +37,10 @@
       for (const ch of data.characters) if (ch.a.length && (await shield.met(ch.a))) metChars.push(ch);
       const lines = [];
       for (const q of data.quiz) if (await shield.met([q.c])) lines.push(q);
+      // Places from the wiki carry the chapter that introduces them; they unlock once it's been opened.
+      const places = [];
+      for (const p of data.places) if (!p.a || (await shield.met(p.a))) places.push(p);
+      data.places = places;
       quiz(data, lines, metChars);
       cast(data, metChars);
     })
