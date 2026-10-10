@@ -675,7 +675,7 @@ const quiz = (() => {
     out.push({ t: q.text, s: key, c: c.slug, l: c.label, n: c.title, h: q.hint });
   }
   // Then lines mined from every published chapter (lib/quiz.mjs, mineLines), so the quiz grows as the
-  // story does. Hand-picked lines win; at most perChapter mined lines come from any one chapter.
+  // story does. Lines listed in Quiz_Lines.md win; at most perChapter mined lines come from any one chapter.
   if (extrasCfg.autoQuiz !== false) {
     const fold = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     const have = new Set(out.map((q) => fold(q.t)));
