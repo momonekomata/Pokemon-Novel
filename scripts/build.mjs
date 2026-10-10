@@ -9,7 +9,7 @@ import { deriveKey, encrypt, KDF_ITERATIONS } from "../lib/vault.mjs";
 import { buildNameIndex, linkCharacters } from "../lib/characters.mjs";
 import { chapterDiff } from "../lib/diff.mjs";
 import { parseTidyReport, parseAmbiguities } from "../lib/tidy.mjs";
-import { parseQuizLines, lineInChapter, mineLines } from "../lib/quiz.mjs";
+import { parseQuizLines, lineInChapter, mineLines, pageGender } from "../lib/quiz.mjs";
 
 const OUT = process.env.OUT_DIR || "_site";
 const CONTENT = process.env.CONTENT_DIR || "content";
@@ -675,20 +675,19 @@ const quiz = (() => {
     out.push({ t: q.text, s: key, c: c.slug, l: c.label, n: c.title, h: q.hint });
   }
   // Then lines mined from every published chapter (lib/quiz.mjs, mineLines), so the quiz grows as the
-  // story does. Lines listed in Quiz_Lines.md win; at most perChapter mined lines come from any one chapter.
+  // story does. Every line counts the same: the game shuffles them all together.
   if (extrasCfg.autoQuiz !== false) {
     const fold = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     const have = new Set(out.map((q) => fold(q.t)));
-    const perChapter = extrasCfg.autoQuizPerChapter ?? 8;
+    const genders = Object.fromEntries(characters.map((ch) => [ch.id, pageGender(ch.page.src)]));
     for (const c of chapters) {
-      const found = mineLines(c.src, nameIndex).filter((m) => characterById.has(m.id) && !have.has(fold(m.text)));
-      const step = Math.max(1, found.length / perChapter);
-      for (let i = 0; i < found.length && out.length < 5000; i += step) {
-        const m = found[Math.floor(i)];
+      const narrator = introCfg.enabled === false ? null : povFor(c)?.id || null;
+      for (const m of mineLines(c.src, nameIndex, { narrator, genders })) {
         const ch = characterById.get(m.id);
+        if (!ch || have.has(fold(m.text))) continue;
         have.add(fold(m.text));
         speakers[m.id] ||= { name: ch.name, page: ch.id, species: shortSpecies(ch.species), url: ch.url };
-        out.push({ t: m.text, s: m.id, c: c.slug, l: c.label, n: c.title, h: "" });
+        out.push({ t: m.text, s: m.id, c: c.slug, l: c.label, n: c.title, h: m.hint });
         minedCount++;
       }
     }
