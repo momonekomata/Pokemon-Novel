@@ -1,0 +1,143 @@
+name: Sync from Drive and publish to Cloudflare
+
+# GitHub pulls the chapters and wiki (from Google Drive, or from the vault repository when
+# site.config.json says "source": "vault"), builds the site and uploads it to Cloudflare Pages. Nothing
+# here depends on the NAS.
+#
+# When it runs: right after a push to the vault (the vault's own workflow sends "vault-updated"), after
+# a push to this repository's main branch, on demand, and every 6 hours as a safety net (and to pick
+# up new illustrations in Drive, which nothing announces).
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [vault-updated]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 */6 * * *"
+
+permissions:
+  contents: read
+
+# One run at a time. A burst of vault pushes collapses: GitHub keeps one run going and only the newest
+# one waiting, which then publishes everything at once.
+concurrency:
+  group: cloudflare
+  cancel-in-progress: false
+
+env:
+  PROJECT: ${{ vars.CLOUDFLARE_PROJECT || 'manyo' }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Until the secrets are added, runs end here quietly instead of failing.
+      - name: Check setup
+        id: ready
+        env:
+          HAS_SECRETS: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.GOOGLE_SERVICE_ACCOUNT_JSON != '' && secrets.AUTHOR_PASSWORD != '' }}
+        run: |
+          if [ "$HAS_SECRETS" = "true" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::Cloudflare publishing isn't set up yet: add the CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, GOOGLE_SERVICE_ACCOUNT_JSON and AUTHOR_PASSWORD secrets."; fi
+
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.ready.outputs.ok == 'true'
+
+      # The revision log, chapter snapshots ("What changed") and word-count history. They hold chapter
+      # text, so they live in the Actions cache (private to this repository), never in git.
+      - name: Restore site history
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: site-data-${{ github.run_id }}
+          restore-keys: site-data-
+
+      # Where the chapters and wiki come from: "source" in site.config.json. "drive" (the default) pulls
+      # everything from Google Drive; "vault" takes the text from the private vault repository and only the
+      # illustrations from Drive.
+      - name: Where does the text come from?
+        id: source
+        if: steps.ready.outputs.ok == 'true'
+        run: echo "source=$(node -p "require('./site.config.json').source || 'drive'")" >> "$GITHUB_OUTPUT"
+
+      - name: Check the vault token
+        if: steps.ready.outputs.ok == 'true' && steps.source.outputs.source == 'vault'
+        env:
+          HAS_VAULT_TOKEN: ${{ secrets.VAULT_TOKEN != '' }}
+        run: |
+          if [ "$HAS_VAULT_TOKEN" != "true" ]; then
+            echo "::error::site.config.json says \"source\": \"vault\" but the VAULT_TOKEN secret is missing (a read-only fine-grained token for the vault repository)."
+            exit 1
+          fi
+
+      # Full history, so each page's dates can come from git.
+      - name: Check out the novel from the vault
+        if: steps.ready.outputs.ok == 'true' && steps.source.outputs.source == 'vault'
+        uses: actions/checkout@v4
+        with:
+          repository: momonekomata/pokemon-novel-vault
+          ref: main
+          token: ${{ secrets.VAULT_TOKEN }}
+          path: vault
+          fetch-depth: 0
+
+      - name: Pull chapters, wiki and illustrations
+        if: steps.ready.outputs.ok == 'true'
+        run: npm run sync
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+
+      # Skip the rest when nothing changed: same files, same code, same day (the stats page counts
+      # "this week", so it refreshes at least daily).
+      - name: Check for changes
+        id: check
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          mkdir -p data
+          stamp="$(sha256sum content/.drive-meta.json | cut -c1-64) ${GITHUB_SHA} $(date -u +%F)"
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ -f data/.last-publish ] && [ "$(cat data/.last-publish)" = "$stamp" ]; then
+            echo "Nothing changed since the last publish."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$stamp" > data/.next-publish
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build site
+        if: steps.check.outputs.changed == 'true'
+        run: npm run build
+        env:
+          AUTHOR_PASSWORD: ${{ secrets.AUTHOR_PASSWORD }}
+
+      - name: Upload to Cloudflare Pages
+        if: steps.check.outputs.changed == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Creates the Pages project on the very first run; afterwards it already exists, which is fine
+          # (a real problem, such as a bad token, still shows up in the deploy below). Must stay ONE line:
+          # wrangler-action runs each line of preCommands as a separate shell command.
+          preCommands: npx wrangler pages project create "${{ env.PROJECT }}" --production-branch=main > create.log 2>&1 && cat create.log || echo "Pages project '${{ env.PROJECT }}' already exists; uploading to it."
+          command: pages deploy _site --project-name=${{ env.PROJECT }} --branch=main --commit-dirty=true
+
+      - name: Remember this publish
+        if: steps.check.outputs.changed == 'true'
+        run: mv data/.next-publish data/.last-publish
+
+      - name: Save site history
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: site-data-${{ github.run_id }}

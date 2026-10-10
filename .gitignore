@@ -1,0 +1,26 @@
+_site/
+content/
+node_modules/
+
+# NAS deployment (see nas/README.md)
+settings.env
+secrets/*
+public/*
+tailscale-state/*
+!secrets/.gitkeep
+!public/.gitkeep
+!tailscale-state/.gitkeep
+.deployed-commit
+
+# Chapter text kept by the build for "What changed" pages (NAS only)
+data/snapshots/
+data/changes/
+data/stats.json
+
+# The novel's text, checked out from the vault repository at build time (source: "vault").
+vault/
+# The NAS copy of the vault that Synology Cloud Sync uploads to Google Drive (nas/README.md).
+drive-mirror/
+mirror-state/
+.env
+drive-copy.log
