@@ -23,7 +23,7 @@ encrypted in the build (PBKDF2 + AES-256-GCM) and only open with the author pass
 - Chapters grouped into arcs; side stories grouped in reading order
 - A "Before you read" box for interludes: the story's intro, the point of view, and newcomers
 - A codex: the first mention of a character, place, organization or piece of lore opens a card, and the
-  Codex page lists them all. Entries come from the public wiki: character pages, world pages, and the
+  wiki's front page lists them all (each linking to its full page; `codex.html` forwards there). Entries come from the public wiki: character pages, world pages, and the
   named entries on registry pages (locations, campus organizations; see `codex` in `site.config.json`).
   A `- Aliases: …` line on a wiki page adds names it can be found by.
 - A spoiler shield for characters and codex entries not met yet

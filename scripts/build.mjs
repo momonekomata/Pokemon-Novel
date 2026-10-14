@@ -264,7 +264,7 @@ const nameIndex = buildNameIndex(characters, cardConfig);
 // ---------- Codex ----------
 // Everything else a reader can look up: public world pages (lore, places, organizations) and the
 // entries of registry pages (the locations page, the campus organizations page). First mentions in the
-// prose get the same cards as characters; codex.html lists them all. See lib/codex.mjs.
+// prose get the same cards as characters; the wiki's front page lists them all. See lib/codex.mjs.
 const codexCfg = config.codex || {};
 const codex = codexCfg.enabled === false ? [] : codexEntries(readerWiki.filter((p) => p.section !== "characters"), {
   kinds: codexCfg.kinds || {},
@@ -389,7 +389,6 @@ function topbar(base, current) {
   const nav = [
     ["read", "Read", "index.html#chapters"],
     ["wiki", "Wiki", "wiki/index.html"],
-    ...(codex.length ? [["codex", "Codex", "codex.html"]] : []),
     ...(extrasCfg.enabled ? [["extras", "Extras", "extras.html"]] : []),
   ]
     .map(([key, label, href]) => `<a href="${base}${href}"${current === key ? ' aria-current="page"' : ""}>${label}</a>`)
@@ -912,12 +911,18 @@ function readerWikiIndex() {
 // ---------- Codex page ----------
 // Every entry a reader can look up, by kind, with a filter box. Entries the reader hasn't met are
 // shielded like wiki cards (data-appears). Written after the chapter pages, which fill `appearances`.
-const KIND_ORDER = ["Character", "Place", "Organization", "Lore"];
+const KIND_ORDER = ["Character", "Place", "Organization", "Lore", "Overview"];
 const chapterBySlug = new Map(chapters.map((c) => [c.slug, c]));
-function codexPage() {
-  const entries = [...entryById.values()];
+function codexPage(base = "") {
+  // Every codex entry, plus any public wiki page no entry stands for (a registry page such as Named
+  // Locations, a character page without a Species line), so the list covers the whole wiki.
+  const covered = new Set([...entryById.values()].filter((e) => !e.block).map((e) => e.page?.path));
+  const extraPages = readerWiki
+    .filter((p) => !covered.has(p.path))
+    .map((p) => ({ id: p.slug, name: p.title, kind: /(^|\/)index\.md$/.test(p.rel) ? "Overview" : p.section === "characters" ? "Character" : "Lore", summary: plainInlineEarly(p.readerSummary || p.summary || ""), url: readerWikiUrl(p), page: p, names: [] }));
+  const entries = [...entryById.values(), ...extraPages];
   const kinds = [...new Set(entries.map((e) => e.kind))].sort((a, b) => ((KIND_ORDER.indexOf(a) + 1 || 99) - (KIND_ORDER.indexOf(b) + 1 || 99)) || a.localeCompare(b));
-  const plural = (k) => (k === "Lore" ? "Lore" : `${k}s`);
+  const plural = (k) => (k === "Lore" || k === "Overview" ? k : `${k}s`);
   const card = (e) => {
     const a = appearances.get(e.id) || [];
     const first = a.length && chapterBySlug.get(a[0]);
@@ -925,7 +930,7 @@ function codexPage() {
     const summary = e.kind === "Character" ? [e.species, e.summary].filter(Boolean).join(" · ") : esc(e.summary || "");
     const text = [e.name, e.kind, ...(e.names || []), plainText(summary)].join(" ").toLowerCase();
     return `
-      <li data-filter-text="${esc(text)}"${a.length ? ` data-appears="${a.join(" ")}"` : ""}><a class="wiki-card codex-card" href="${e.url}">
+      <li data-filter-text="${esc(text)}"${a.length ? ` data-appears="${a.join(" ")}"` : ""}><a class="wiki-card codex-card" href="${base}${e.url}">
         <span class="wiki-card-title">${esc(e.name)}</span>
         ${summary ? `<span class="wiki-card-summary">${summary}</span>` : ""}
         ${also.length ? `<span class="codex-also">Also: ${esc(also.join(", "))}</span>` : ""}
@@ -935,11 +940,11 @@ function codexPage() {
   const body = `
 <main class="wiki wiki-index codex">
   <header class="wiki-head">
-    <h1 class="wiki-title">Codex</h1>
-    <p class="wiki-lede">Every character, place, group and piece of lore, in one place. Names in the chapters open the same cards.</p>
+    <h1 class="wiki-title">Wiki</h1>
+    <p class="wiki-lede">Every character, place, group and piece of lore. Names in the chapters open the same cards; each links to its full page.</p>
   </header>
   <p class="shield-note" id="shield-note" hidden></p>
-  <label class="filter">${ICONS.search}<input type="search" id="wiki-filter" placeholder="Filter the codex" autocomplete="off" aria-label="Filter the codex"></label>
+  <label class="filter">${ICONS.search}<input type="search" id="wiki-filter" placeholder="Filter the wiki" autocomplete="off" aria-label="Filter the wiki"></label>
   ${kinds
     .map((k) => {
       const list = entries.filter((e) => e.kind === k).sort((a, b) => a.name.localeCompare(b.name));
@@ -952,7 +957,7 @@ function codexPage() {
     .join("")}
   <p class="filter-empty" id="filter-empty" hidden>Nothing matches.</p>
 </main>`;
-  return layout({ title: `Codex · ${config.title}`, description: `Characters, places, groups and lore in ${config.title}.`, base: "", body, bodyClass: "page-wiki", current: "codex" });
+  return layout({ title: `Wiki · ${config.title}`, description: `Characters, places, groups and lore in ${config.title}.`, base, body, bodyClass: "page-wiki", current: "wiki" });
 }
 
 // ---------- Continuity (author area) ----------
@@ -1360,7 +1365,7 @@ write("index.html", indexPage());
 main.forEach((c, i) => write(`${c.slug}.html`, chapterPage(c, main[i - 1], main[i + 1])));
 extras.forEach((c, i) => write(`${c.slug}.html`, chapterPage(c, extras[i - 1], extras[i + 1])));
 chapters.filter((c) => changes.has(c.slug)).forEach((c) => write(`changes/${c.slug}.html`, changesPage(c)));
-write("wiki/index.html", readerWikiIndex());
+write("wiki/index.html", codex.length ? codexPage("../") : readerWikiIndex());
 write("search.html", searchPage());
 write("search-index.json", JSON.stringify(searchIndex()));
 write("order.json", JSON.stringify({ main: main.map((c) => c.slug), extras: extras.map((c) => c.slug) }));
@@ -1374,7 +1379,8 @@ write("characters.json", JSON.stringify(Object.fromEntries([
   ...characters.map(({ id, name, species, summary, image, url }) => [id, { name, species, summary, image, url }]),
   ...codex.map(({ id, name, kind, summary, url }) => [id, { name, species: kind, summary: esc(summary), url }]),
 ])));
-if (codex.length) write("codex.html", codexPage());
+// The codex is the wiki's front page now; codex.html only forwards there.
+if (codex.length) write("codex.html", `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=wiki/index.html"><link rel="canonical" href="wiki/index.html"><title>Wiki</title><a href="wiki/index.html">Wiki</a>`);
 const authorPages = await buildAuthorTier();
 const imageCount = await writeImages();
 
