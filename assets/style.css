@@ -1033,3 +1033,31 @@ kbd { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; p
   .illust img { box-shadow: none; }
   body { background: #fff; color: #000; }
 }
+
+/* ---------- Codex ---------- */
+.codex-also, .codex-meta { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
+.codex-meta { font-variant-numeric: tabular-nums; }
+
+/* ---------- Continuity (author area) ---------- */
+.cx-list { display: grid; gap: 8px; }
+.cx-entry { border: 1px solid var(--faint); border-radius: 12px; background: var(--surface); }
+.cx-entry > summary { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: baseline; padding: 12px 14px; cursor: pointer; list-style: none; }
+.cx-entry > summary::-webkit-details-marker { display: none; }
+.cx-entry[open] > summary { border-bottom: 1px solid var(--faint); }
+.cx-name { font-family: var(--serif); font-weight: 600; }
+.cx-kind { margin-left: 8px; font-family: var(--sans); font-size: 11px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.cx-stats { font-size: 13px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.cx-strip { grid-column: 1 / -1; display: flex; gap: 2px; flex-wrap: wrap; }
+.cx-strip i { width: 9px; height: 9px; border-radius: 2px; background: var(--faint); }
+.cx-strip .cx-1 { background: color-mix(in srgb, var(--chart) 35%, var(--faint)); }
+.cx-strip .cx-2 { background: color-mix(in srgb, var(--chart) 65%, var(--faint)); }
+.cx-strip .cx-3 { background: var(--chart); }
+.cx-body { padding: 12px 14px 14px; font-size: 14px; }
+.cx-span { margin: 0 0 10px; color: var(--muted); }
+.cx-prog { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; border-left: 2px solid var(--faint); }
+.cx-prog > li { padding-left: 12px; }
+.cx-when { margin: 0 0 2px; font-weight: 600; }
+.cx-when span { font-weight: 400; color: var(--muted); }
+.cx-prog ul { margin: 0; padding-left: 18px; line-height: 1.5; }
+.cx-quiet ul { padding-left: 18px; line-height: 1.7; }
+@media (max-width: 520px) { .cx-entry > summary { grid-template-columns: 1fr; } .cx-stats { text-align: left; } }

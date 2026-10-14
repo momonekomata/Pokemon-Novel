@@ -7,6 +7,7 @@ import { loadContent, isReaderPage, stripAuthorNotes, sha256 } from "../lib/cont
 import { escapeHtml as esc, renderMarkdown } from "../lib/markdown.mjs";
 import { deriveKey, encrypt, KDF_ITERATIONS } from "../lib/vault.mjs";
 import { buildNameIndex, linkCharacters } from "../lib/characters.mjs";
+import { codexEntries, combinedIndex, countMentions, progressionItems } from "../lib/codex.mjs";
 import { chapterDiff } from "../lib/diff.mjs";
 import { parseTidyReport, parseAmbiguities } from "../lib/tidy.mjs";
 import { parseQuizLines, lineInChapter, mineLines, pageGender } from "../lib/quiz.mjs";
@@ -239,6 +240,8 @@ const sectionTitle = (s) => config.wiki.sectionTitles?.[s] || (s ? s[0].toUpperC
 const authorId = (path) => sha256(`${config.authorTier.salt}:${path}`).slice(0, 16);
 const readerWikiUrl = (p) => `wiki/${p.section}/${p.slug}.html`;
 
+const plainInlineEarly = (md) => renderMarkdown(md, { link: () => null, image: () => null }).replace(/^<p>|<\/p>\s*$/g, "").replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").trim();
+
 // ---------- Character cards ----------
 // Public character pages that describe a person (they have a "Species:" line), with what the card shows.
 const characters = cardConfig.enabled === false ? [] : readerWiki
@@ -257,6 +260,27 @@ const characters = cardConfig.enabled === false ? [] : readerWiki
     return { id: p.slug, page: p, name: p.title, species: species ? inline(species.replace(/\.\s*$/, "")) : "", summary: summary ? inline(stripAuthorNotes(summary, config)) : "", image, url: readerWikiUrl(p) };
   });
 const nameIndex = buildNameIndex(characters, cardConfig);
+
+// ---------- Codex ----------
+// Everything else a reader can look up: public world pages (lore, places, organizations) and the
+// entries of registry pages (the locations page, the campus organizations page). First mentions in the
+// prose get the same cards as characters; codex.html lists them all. See lib/codex.mjs.
+const codexCfg = config.codex || {};
+const codex = codexCfg.enabled === false ? [] : codexEntries(readerWiki.filter((p) => p.section !== "characters"), {
+  kinds: codexCfg.kinds || {},
+  registries: codexCfg.registries || [],
+  skip: codexCfg.skip || [],
+  strip: (src) => stripAuthorNotes(src, config),
+  summarize: (md) => {
+    const t = plainInlineEarly(stripAuthorNotes(md, config).split(/\n\s*\n|\n(?=\s*[-*] )/).map((x) => x.replace(/^\s*[-*]\s+/, "")).find((x) => /\p{L}{3}/u.test(x) && !/^\s*#/.test(x)) || "");
+    const first = t.split(/(?<=[.!?])\s+/)[0];
+    return first.length > 240 ? first.slice(0, 237).replace(/\s+\S*$/, "") + "…" : first;
+  },
+  urlFor: (p) => readerWikiUrl(p),
+}).map((e) => ({ ...e, summary: e.summary ? plainInlineEarly(e.summary) : "" }));
+const codexIndex = combinedIndex(nameIndex, codex);
+const entryById = new Map([...characters.map((ch) => [ch.id, { ...ch, kind: "Character" }]), ...codex.map((e) => [e.id, e])]);
+
 // Spoiler shield: the chapters (in reading order) where each character is mentioned, filled in as
 // chapter pages are rendered. A reader who hasn't opened any of them yet hasn't met her.
 const appearances = new Map(); // character id -> [chapter slugs]
@@ -365,6 +389,7 @@ function topbar(base, current) {
   const nav = [
     ["read", "Read", "index.html#chapters"],
     ["wiki", "Wiki", "wiki/index.html"],
+    ...(codex.length ? [["codex", "Codex", "codex.html"]] : []),
     ...(extrasCfg.enabled ? [["extras", "Extras", "extras.html"]] : []),
   ]
     .map(([key, label, href]) => `<a href="${base}${href}"${current === key ? ' aria-current="page"' : ""}>${label}</a>`)
@@ -586,7 +611,7 @@ function chapterPage(c, prev, next) {
       ? `<a class="nav-link ${rel}" href="${ch.slug}.html" rel="${rel}">${rel === "prev" ? ICONS.left : ""}<span><small>${rel === "prev" ? "Previous" : "Next"}</small>${esc(ch.title)}</span>${rel === "next" ? ICONS.right : ""}</a>`
       : "";
   const end = `<a class="nav-link next" href="index.html#chapters"><span><small>The end — for now</small>Back to contents</span>${ICONS.list}</a>`;
-  const proseHtml = linkCharacters(renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") }), nameIndex, (id) => `wiki/characters/${id}.html`, seen);
+  const proseHtml = linkCharacters(renderMarkdown(c.src, { link: linkResolver(c.path, "", "reader"), image: imageResolver(c.path, "", "reader") }), codexIndex, (id) => entryById.get(id)?.url || `wiki/characters/${id}.html`, seen);
   const povInfo = introCfg.enabled === false ? null : povFor(c);
   if (povInfo?.id) seen.add(povInfo.id); // told from her eyes counts as meeting her, even if her name never appears
   const newIds = [...seen].filter((id) => !appearances.has(id));
@@ -884,6 +909,139 @@ function readerWikiIndex() {
   return layout({ title: `Wiki · ${config.title}`, base: "../", body, bodyClass: "page-wiki", current: "wiki" });
 }
 
+// ---------- Codex page ----------
+// Every entry a reader can look up, by kind, with a filter box. Entries the reader hasn't met are
+// shielded like wiki cards (data-appears). Written after the chapter pages, which fill `appearances`.
+const KIND_ORDER = ["Character", "Place", "Organization", "Lore"];
+const chapterBySlug = new Map(chapters.map((c) => [c.slug, c]));
+function codexPage() {
+  const entries = [...entryById.values()];
+  const kinds = [...new Set(entries.map((e) => e.kind))].sort((a, b) => ((KIND_ORDER.indexOf(a) + 1 || 99) - (KIND_ORDER.indexOf(b) + 1 || 99)) || a.localeCompare(b));
+  const plural = (k) => (k === "Lore" ? "Lore" : `${k}s`);
+  const card = (e) => {
+    const a = appearances.get(e.id) || [];
+    const first = a.length && chapterBySlug.get(a[0]);
+    const also = (e.names || []).filter((n) => n !== e.name && !/^the /.test(n) && n.toLowerCase() !== e.name.toLowerCase().replace(/^the /, ""));
+    const summary = e.kind === "Character" ? [e.species, e.summary].filter(Boolean).join(" · ") : esc(e.summary || "");
+    const text = [e.name, e.kind, ...(e.names || []), plainText(summary)].join(" ").toLowerCase();
+    return `
+      <li data-filter-text="${esc(text)}"${a.length ? ` data-appears="${a.join(" ")}"` : ""}><a class="wiki-card codex-card" href="${e.url}">
+        <span class="wiki-card-title">${esc(e.name)}</span>
+        ${summary ? `<span class="wiki-card-summary">${summary}</span>` : ""}
+        ${also.length ? `<span class="codex-also">Also: ${esc(also.join(", "))}</span>` : ""}
+        ${first ? `<span class="codex-meta">First in ${esc(first.label)} · ${a.length} ${a.length === 1 ? "story" : "stories"}</span>` : ""}
+      </a></li>`;
+  };
+  const body = `
+<main class="wiki wiki-index codex">
+  <header class="wiki-head">
+    <h1 class="wiki-title">Codex</h1>
+    <p class="wiki-lede">Every character, place, group and piece of lore, in one place. Names in the chapters open the same cards.</p>
+  </header>
+  <p class="shield-note" id="shield-note" hidden></p>
+  <label class="filter">${ICONS.search}<input type="search" id="wiki-filter" placeholder="Filter the codex" autocomplete="off" aria-label="Filter the codex"></label>
+  ${kinds
+    .map((k) => {
+      const list = entries.filter((e) => e.kind === k).sort((a, b) => a.name.localeCompare(b.name));
+      return `
+  <section class="wiki-section" data-filter-group>
+    <div class="section-head"><h2>${esc(plural(k))}</h2><span class="section-meta">${list.length}</span></div>
+    <ul class="wiki-grid">${list.map(card).join("")}</ul>
+  </section>`;
+    })
+    .join("")}
+  <p class="filter-empty" id="filter-empty" hidden>Nothing matches.</p>
+</main>`;
+  return layout({ title: `Codex · ${config.title}`, description: `Characters, places, groups and lore in ${config.title}.`, base: "", body, bodyClass: "page-wiki", current: "codex" });
+}
+
+// ---------- Continuity (author area) ----------
+// For every character page (public or not) and codex entry: how often it's named in each story, when
+// it was last seen, who has gone quiet, and its progression: the details its wiki page ties to a
+// particular chapter, in reading order.
+function continuityPage(linkFor) {
+  const authorChars = wiki.filter((p) => p.section === "characters" && SPECIES_RE.test(p.src)).map((p) => ({ id: p.slug, name: p.title, page: p, kind: "Character", url: null }));
+  const index = combinedIndex(buildNameIndex(authorChars, cardConfig), codex);
+  const entries = [...authorChars, ...codex];
+  const order = [...main, ...extras];
+  const pos = new Map(order.map((c, i) => [c.slug, i]));
+  const counts = new Map(); // id -> Map(slug -> n)
+  for (const c of order) for (const [id, n] of countMentions(c.src.replace(/<!--[\s\S]*?-->/g, ""), index)) {
+    if (!counts.has(id)) counts.set(id, new Map());
+    counts.get(id).set(c.slug, n);
+  }
+  const lastMain = main.length - 1;
+  const chapterLink = (c) => `<a href="../../${c.slug}.html">${esc(c.extra ? c.title : c.label)}</a>`;
+  const byNumber = (n) => main.find((c) => !c.isInterlude && c.slot && c.slot[0] === n) || main.find((c) => c.slot && c.slot[0] === n) || null;
+  const rows = entries.map((e) => {
+    const m = counts.get(e.id) || new Map();
+    const mainIdx = main.map((c, i) => (m.get(c.slug) ? i : -1)).filter((i) => i >= 0);
+    const total = [...m.values()].reduce((a, b) => a + b, 0);
+    const stories = [...m.keys()].sort((a, b) => pos.get(a) - pos.get(b));
+    const silent = mainIdx.length ? lastMain - mainIdx[mainIdx.length - 1] : null;
+    const page = e.page;
+    const src = e.block ?? page.src;
+    const chapterFor = (href) => {
+      const target = wikiByPath.get(posix.normalize(posix.join(posix.dirname(page.path), decodeURIComponent(href))));
+      return (target?.manuscriptFile && chapterByFile.get(target.manuscriptFile)) || null;
+    };
+    const prog = progressionItems(src, { chapterFor, chapterByNumber: byNumber }).sort((a, b) => pos.get(a.chapter.slug) - pos.get(b.chapter.slug));
+    return { e, m, total, stories, mainIdx, silent, prog };
+  });
+  const strip = (r) => `<span class="cx-strip" aria-hidden="true">${main
+    .map((c) => {
+      const n = r.m.get(c.slug) || 0;
+      return `<i class="cx-${n === 0 ? 0 : n < 3 ? 1 : n < 10 ? 2 : 3}" title="${esc(c.label)}: ${n}"></i>`;
+    })
+    .join("")}</span>`;
+  const quiet = rows
+    .filter((r) => r.e.kind === "Character" && r.mainIdx.length >= 3 && r.silent >= (config.continuity?.quietAfter ?? 8))
+    .sort((a, b) => b.silent - a.silent);
+  const entryHtml = (r) => {
+    const first = r.stories[0] && chapterBySlug.get(r.stories[0]);
+    const last = r.stories.at(-1) && chapterBySlug.get(r.stories.at(-1));
+    const grouped = [];
+    for (const it of r.prog) {
+      if (grouped.at(-1)?.chapter !== it.chapter) grouped.push({ chapter: it.chapter, texts: [] });
+      grouped.at(-1).texts.push(it.text);
+    }
+    const text = [r.e.name, r.e.kind, ...(r.e.names || [])].join(" ").toLowerCase();
+    return `
+    <details class="cx-entry" data-filter-text="${esc(text)}">
+      <summary>
+        <span class="cx-name">${esc(r.e.name)}</span>
+        <span class="cx-stats">${r.total ? `${r.total} mention${r.total === 1 ? "" : "s"} in ${r.stories.length} ${r.stories.length === 1 ? "story" : "stories"}` : "Not named in the prose yet"}${r.silent ? ` · quiet for ${r.silent} chapter${r.silent === 1 ? "" : "s"}` : ""}</span>
+        ${r.total ? strip(r) : ""}
+      </summary>
+      <div class="cx-body">
+        ${first ? `<p class="cx-span">First ${chapterLink(first)} · last ${chapterLink(last)} · <a href="${linkFor(r.e.page.path)}">wiki page</a></p>` : `<p class="cx-span"><a href="${linkFor(r.e.page.path)}">wiki page</a></p>`}
+        ${grouped.length
+          ? `<ol class="cx-prog">${grouped.map((g) => `<li><p class="cx-when">${chapterLink(g.chapter)}${g.chapter.extra ? ` <span>Side story</span>` : ` <span>${esc(g.chapter.title)}</span>`}</p><ul>${g.texts.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></li>`).join("")}</ol>`
+          : `<p class="report-ok">No chapter-linked details on the wiki page yet.</p>`}
+      </div>
+    </details>`;
+  };
+  const sorted = (kind) => rows.filter((r) => r.e.kind === kind).sort((a, b) => b.total - a.total || a.e.name.localeCompare(b.e.name));
+  const kinds = [...new Set(rows.map((r) => r.e.kind))].sort((a, b) => ((KIND_ORDER.indexOf(a) + 1 || 99) - (KIND_ORDER.indexOf(b) + 1 || 99)));
+  const html = `
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html">Author area</a><span aria-hidden="true">›</span><span>Continuity</span></nav>
+  <header class="wiki-head">
+    <h1 class="wiki-title">Continuity</h1>
+    <p class="wiki-lede">Where each character, place and piece of lore is named across the main chapters (one square per chapter, darker for more mentions), how long it has been quiet, and its progression: the details its wiki page ties to a chapter, in reading order. Add a <code>## Progression</code> section with <code>- Ch. 30: …</code> lines to a page for details the wiki doesn't cite yet.</p>
+  </header>
+  <label class="filter">${ICONS.search}<input type="search" id="wiki-filter" placeholder="Filter" autocomplete="off" aria-label="Filter"></label>
+  ${quiet.length ? `<section class="wiki-section cx-quiet"><div class="section-head"><h2>Gone quiet</h2><span class="section-meta">${quiet.length}</span></div>
+    <p>Characters named in at least three main chapters who haven't been named in the last ${config.continuity?.quietAfter ?? 8} or more.</p>
+    <ul>${quiet.map((r) => `<li><strong>${esc(r.e.name)}</strong> · last in ${chapterLink(main[r.mainIdx.at(-1)])} · quiet for ${r.silent} chapters</li>`).join("")}</ul></section>` : ""}
+  ${kinds.map((k) => `
+  <section class="wiki-section" data-filter-group>
+    <div class="section-head"><h2>${esc(k === "Lore" ? "Lore" : k + "s")}</h2><span class="section-meta">${sorted(k).length}</span></div>
+    <div class="cx-list">${sorted(k).map(entryHtml).join("")}</div>
+  </section>`).join("")}
+  <p class="filter-empty" id="filter-empty" hidden>Nothing matches.</p>`;
+  return { html, quiet: quiet.length, entries: rows.length };
+}
+
 // ---------- Author tier ----------
 
 function vaultShell(payload, base) {
@@ -1160,6 +1318,9 @@ async function buildAuthorTier() {
   const statsId = authorId("\u0000writing-stats");
   write(`author/p/${statsId}.html`, vaultShell(await seal(`Writing stats · Author`, statsPage()), "../../"));
   write(`author/p/${reportId}.html`, vaultShell(await seal(`Build report · Author`, report.html), "../../"));
+  const continuityId = authorId("\u0000continuity");
+  const continuity = continuityPage((path) => `${authorId(path)}.html`);
+  write(`author/p/${continuityId}.html`, vaultShell(await seal(`Continuity · Author`, continuity.html), "../../"));
   const tidyId = authorId("\u0000tidy-board");
   const board = tidy && tidyBoard(linkResolver(tidyFile.path, "../../", "author"));
   if (board) write(`author/p/${tidyId}.html`, vaultShell(await seal(`Tidy board · Author`, board.html), "../../"));
@@ -1175,6 +1336,9 @@ async function buildAuthorTier() {
     ${board ? `<a class="report-banner${board.open ? " has-issues" : ""}" href="p/${tidyId}.html">
       <span><strong>Tidy board</strong>${board.open ? `${board.open} open item${board.open === 1 ? "" : "s"} in the wiki's punch list` : "The wiki's punch list is clear"}</span>${ICONS.right}
     </a>` : ""}
+    <a class="report-banner${continuity.quiet ? " has-issues" : ""}" href="p/${continuityId}.html">
+      <span><strong>Continuity</strong>${continuity.entries} entries${continuity.quiet ? ` · ${continuity.quiet} gone quiet` : ""}</span>${ICONS.right}
+    </a>
     <a class="report-banner" href="p/${statsId}.html">
       <span><strong>Writing stats</strong>${totalWords.toLocaleString("en")} words</span>${ICONS.right}
     </a>
@@ -1206,7 +1370,11 @@ if (extrasCfg.enabled) {
   write("extras.html", extrasPage());
   write("extras.json", JSON.stringify(extrasData()));
 }
-write("characters.json", JSON.stringify(Object.fromEntries(characters.map(({ id, name, species, summary, image, url }) => [id, { name, species, summary, image, url }]))));
+write("characters.json", JSON.stringify(Object.fromEntries([
+  ...characters.map(({ id, name, species, summary, image, url }) => [id, { name, species, summary, image, url }]),
+  ...codex.map(({ id, name, kind, summary, url }) => [id, { name, species: kind, summary: esc(summary), url }]),
+])));
+if (codex.length) write("codex.html", codexPage());
 const authorPages = await buildAuthorTier();
 const imageCount = await writeImages();
 

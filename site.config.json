@@ -73,5 +73,32 @@
   "authorTier": {
     "salt": "d0a2d8c9377afc640e2761e73bea7407",
     "note": "Public salt for the author password; change it (and the password) to sign everyone out."
+  },
+  "codex": {
+    "enabled": true,
+    "registries": [
+      {
+        "page": "world/locations.md",
+        "level": 3,
+        "kind": "Place"
+      },
+      {
+        "page": "world/campus-organizations.md",
+        "level": 2,
+        "kind": "Organization"
+      }
+    ],
+    "kinds": {
+      "world/fetch.md": "Organization",
+      "world/ladies-afternoon-tea-club.md": "Organization",
+      "world/tsukuyomi-ko.md": "Organization",
+      "world/manyo-university.md": "Place",
+      "world/myojinzawa.md": "Place",
+      "world/lumina-magazine.md": "Organization"
+    },
+    "skip": []
+  },
+  "continuity": {
+    "quietAfter": 8
   }
 }

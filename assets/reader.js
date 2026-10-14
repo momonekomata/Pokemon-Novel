@@ -184,7 +184,8 @@
     const note = document.getElementById("shield-note");
     if (note) {
       note.hidden = !hidden;
-      note.innerHTML = hidden ? `Spoiler shield: ${hidden} character${hidden === 1 ? "" : "s"} you haven't met yet ${hidden === 1 ? "is" : "are"} hidden. Tap a card to peek, or turn the shield off under the <strong>T</strong> button.` : "";
+      const noun = document.querySelector("main.codex") ? (hidden === 1 ? "entry" : "entries") : hidden === 1 ? "character" : "characters";
+      note.innerHTML = hidden ? `Spoiler shield: ${hidden} ${noun} you haven't met yet ${hidden === 1 ? "is" : "are"} hidden. Tap a card to peek, or turn the shield off under the <strong>T</strong> button.` : "";
     }
     // A character's own page: a veil until she's met.
     const page = document.querySelector("main.wiki[data-appears]");

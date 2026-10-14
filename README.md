@@ -22,7 +22,11 @@ encrypted in the build (PBKDF2 + AES-256-GCM) and only open with the author pass
 - Clean, adjustable reading view: serif/sans, text size, line width, light/sepia/dark
 - Chapters grouped into arcs; side stories grouped in reading order
 - A "Before you read" box for interludes: the story's intro, the point of view, and newcomers
-- Character cards on first mention, and a spoiler shield for characters not met yet
+- A codex: the first mention of a character, place, organization or piece of lore opens a card, and the
+  Codex page lists them all. Entries come from the public wiki: character pages, world pages, and the
+  named entries on registry pages (locations, campus organizations; see `codex` in `site.config.json`).
+  A `- Aliases: …` line on a wiki page adds names it can be found by.
+- A spoiler shield for characters and codex entries not met yet
 - Illustrations between paragraphs, search, "Latest updates" and "What changed" pages
 - Extras: a "Who Said It?" quiz and a "Cast Shuffle" prompt toy, both behind the spoiler shield and both
   growing with the story. The quiz mixes the lines in `Quiz_Lines.md` (text repository) with lines mined
@@ -31,7 +35,9 @@ encrypted in the build (PBKDF2 + AES-256-GCM) and only open with the author pass
   characters, places (`Cast_Shuffle.md`, plus places linked to a chapter on the wiki's locations page),
   moods and sparks.
 - Author area: the full wiki, reference files, a build report, a tidy board for the wiki's punch list,
-  and writing stats
+  writing stats, and a Continuity page: every character (public or not) and codex entry with its
+  mentions per chapter, who has gone quiet, and its progression (the details its wiki page ties to a
+  chapter, by link or "Ch. N", plus any `## Progression` section of `- Ch. N: …` lines)
 
 ## Working locally
 
