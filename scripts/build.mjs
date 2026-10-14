@@ -908,6 +908,42 @@ function readerWikiIndex() {
   return layout({ title: `Wiki · ${config.title}`, base: "../", body, bodyClass: "page-wiki", current: "wiki" });
 }
 
+// ---------- Wiki home ----------
+// The wiki's own front page (wiki/index.md), as readers may see it: from its first "## " section on,
+// without the sections and lines that only serve the author, and without table rows or list items
+// that would only point at pages readers can't open. The author area keeps the full page.
+const HOME_DROP = /^## +(How to use|Maintenance|Related|Sources)\b/i;
+function wikiHome(base) {
+  const page = wikiByPath.get(`${config.drive.wikiFolder}/index.md`);
+  if (!page) return "";
+  const readerTarget = (href) => {
+    if (/^(https?:|mailto:|#)/i.test(href)) return true;
+    const target = posix.normalize(posix.join(posix.dirname(page.path), decodeURIComponent(href.split("#")[0])));
+    return readerWikiPaths.has(target) || chapterByFile.has(target) || [...manuscriptPageFor.entries()].some(([file, p]) => p.path === target && chapterByFile.has(file));
+  };
+  const keep = (line) => {
+    const links = [...line.matchAll(/\]\(([^)]+)\)/g)].map((m) => m[1]);
+    return !links.length || links.some(readerTarget);
+  };
+  const sections = page.src
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .split(/^(?=## )/m)
+    .slice(1)
+    .filter((sec) => !HOME_DROP.test(sec))
+    .map((sec) => sec.split("\n").filter((line) => !/^\s*(\||[-*] )/.test(line) || /^\|[-| :]+\|?\s*$/.test(line) || keep(line)).join("\n"))
+    .filter((sec) => /\n\s*(\||[-*] |\S)/.test(sec.replace(/^## .*$/m, "")));
+  const md = sections.join("\n");
+  const lede = page.summary ? `<p class="wiki-lede">${renderMarkdown(stripAuthorNotes(page.summary, config), { link: () => null }).replace(/^<p>|<\/p>\s*$/g, "")}</p>` : "";
+  return `
+  <header class="wiki-head">
+    <h1 class="wiki-title">Wiki</h1>
+    ${lede}
+  </header>
+  <article class="wiki-body wiki-home">
+${renderMarkdown(stripAuthorNotes(md, config), { link: linkResolver(page.path, base, "reader"), image: imageResolver(page.path, base, "reader") })}
+  </article>`;
+}
+
 // ---------- Codex page ----------
 // Every entry a reader can look up, by kind, with a filter box. Entries the reader hasn't met are
 // shielded like wiki cards (data-appears). Written after the chapter pages, which fill `appearances`.
@@ -937,14 +973,17 @@ function codexPage(base = "") {
         ${first ? `<span class="codex-meta">First in ${esc(first.label)} · ${a.length} ${a.length === 1 ? "story" : "stories"}</span>` : ""}
       </a></li>`;
   };
+  const home = wikiHome(base);
   const body = `
 <main class="wiki wiki-index codex">
+  <label class="filter">${ICONS.search}<input type="search" id="wiki-filter" placeholder="Filter the wiki" autocomplete="off" aria-label="Filter the wiki"></label>
+  ${home ? `<div id="wiki-home">${home}</div>` : `
   <header class="wiki-head">
     <h1 class="wiki-title">Wiki</h1>
     <p class="wiki-lede">Every character, place, group and piece of lore. Names in the chapters open the same cards; each links to its full page.</p>
-  </header>
+  </header>`}
+  ${home ? `<h2 class="wiki-all-head">Everything, A to Z</h2>` : ""}
   <p class="shield-note" id="shield-note" hidden></p>
-  <label class="filter">${ICONS.search}<input type="search" id="wiki-filter" placeholder="Filter the wiki" autocomplete="off" aria-label="Filter the wiki"></label>
   ${kinds
     .map((k) => {
       const list = entries.filter((e) => e.kind === k).sort((a, b) => a.name.localeCompare(b.name));

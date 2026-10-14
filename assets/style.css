@@ -1061,3 +1061,8 @@ kbd { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; p
 .cx-prog ul { margin: 0; padding-left: 18px; line-height: 1.5; }
 .cx-quiet ul { padding-left: 18px; line-height: 1.7; }
 @media (max-width: 520px) { .cx-entry > summary { grid-template-columns: 1fr; } .cx-stats { text-align: left; } }
+.wiki-home { margin-bottom: 8px; }
+.wiki-all-head { margin: 40px 0 8px; font-family: var(--serif); font-size: 1.375rem; }
+.codex > .filter:first-child { margin-top: 24px; }
+.codex #wiki-home .wiki-head { padding-top: 24px; }
+.wiki-all-head + .shield-note { margin-top: 16px; }

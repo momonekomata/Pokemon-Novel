@@ -381,6 +381,9 @@
         if (shown) any = true;
       });
       document.getElementById("filter-empty").hidden = any;
+      // The wiki's home page steps aside while a filter is typed, leaving just the matches.
+      const home = document.getElementById("wiki-home");
+      if (home) home.hidden = !!q;
     });
   }
   initFilter();
