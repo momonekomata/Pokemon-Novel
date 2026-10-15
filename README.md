@@ -27,6 +27,9 @@ encrypted in the build (PBKDF2 + AES-256-GCM) and only open with the author pass
   minus author-only sections and links) with a filter bar on top. `codex.html` forwards there. Entries come from the public wiki: character pages, world pages, and the
   named entries on registry pages (locations, campus organizations; see `codex` in `site.config.json`).
   A `- Aliases: …` line on a wiki page adds names it can be found by.
+- "Latest updates" on the wiki's front page: the 10 most recently created or revised public wiki pages
+  (`wikiUpdates.show` in `site.config.json` changes the number). A page counts as revised when its
+  reader-visible text changes.
 - A spoiler shield for characters and codex entries not met yet
 - Illustrations between paragraphs, search, "Latest updates" and "What changed" pages
 - A browser-tab icon: a picture named `favicon.png` in the illustrations folder (cropped square; the name

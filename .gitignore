@@ -12,10 +12,8 @@ tailscale-state/*
 !tailscale-state/.gitkeep
 .deployed-commit
 
-# Chapter text kept by the build for "What changed" pages (NAS only)
-data/snapshots/
-data/changes/
-data/stats.json
+# Site history kept by the build (revision logs, chapter snapshots, stats): holds novel text, never committed.
+data/
 
 # The novel's text, checked out from the vault repository at build time (source: "vault").
 vault/

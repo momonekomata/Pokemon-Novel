@@ -1066,3 +1066,7 @@ kbd { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; p
 .codex > .filter:first-child { margin-top: 24px; }
 .codex #wiki-home .wiki-head { padding-top: 24px; }
 .wiki-all-head + .shield-note { margin-top: 16px; }
+.wiki-updates { margin-top: 32px; padding-bottom: 0; }
+li.unmet .update-item { position: relative; cursor: pointer; }
+li.unmet .update-item > * { filter: blur(6px); opacity: .5; user-select: none; }
+li.unmet .update-item::after { content: "Not met yet · tap to peek"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; font-weight: 500; color: var(--muted); }

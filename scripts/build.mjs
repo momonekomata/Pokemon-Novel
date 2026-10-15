@@ -215,11 +215,40 @@ for (const c of chapters) {
 const feed = chapters
   .map((c) => {
     const u = updates[c.slug];
-    const revised = u.updated && u.updated > u.published;
+    const revised = u.updated && Date.parse(u.updated) > Date.parse(u.published);
     return { c, kind: revised ? "Revised" : "New", date: revised ? u.updated : u.published };
   })
-  .sort((a, b) => b.date.localeCompare(a.date))
+  .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
   .slice(0, config.updates?.show ?? 8);
+
+// ---------- Wiki updates ----------
+// The same idea for public wiki pages, kept in wiki-updates.json next to updates.json: a page counts as
+// revised only when the text readers see changes (author-only sections and lines don't count). The
+// first run seeds dates from git; after that a page that newly goes public is dated by the build.
+const WIKI_UPDATES = join(dirname(UPDATES), "wiki-updates.json");
+const prevWiki = existsSync(WIKI_UPDATES) ? JSON.parse(readFileSync(WIKI_UPDATES, "utf8")) : null;
+const wikiUpdates = {};
+for (const p of readerWiki) {
+  if (/(^|\/)index\.md$/.test(p.rel)) continue;
+  const hash = sha256(stripAuthorNotes(p.src, config).replace(/<!--[\s\S]*?-->/g, "").replace(/\s+/g, " "));
+  const rec = prevWiki?.[p.path];
+  if (!rec) {
+    const seeded = !prevWiki && new Date(p.modified) - new Date(p.created) > HOUR;
+    wikiUpdates[p.path] = { title: p.title, hash, published: prevWiki ? new Date().toISOString() : p.created, updated: seeded ? p.modified : null };
+  } else {
+    wikiUpdates[p.path] = { ...rec, title: p.title, hash, updated: rec.hash === hash ? rec.updated : p.modified };
+  }
+}
+writeFileSync(WIKI_UPDATES, JSON.stringify(wikiUpdates, null, 2) + "\n");
+const wikiFeed = readerWiki
+  .filter((p) => wikiUpdates[p.path])
+  .map((p) => {
+    const u = wikiUpdates[p.path];
+    const revised = u.updated && Date.parse(u.updated) > Date.parse(u.published);
+    return { p, kind: revised ? "Revised" : "New", date: revised ? u.updated : u.published };
+  })
+  .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || a.p.title.localeCompare(b.p.title))
+  .slice(0, config.wikiUpdates?.show ?? 10);
 
 // ---------- Arcs ----------
 // From Arcs.md at the top of the Drive folder, one line per arc giving the chapter it starts at:
@@ -968,6 +997,27 @@ ${renderMarkdown(stripAuthorNotes(md, config), { link: linkResolver(page.path, b
   </article>`;
 }
 
+// The ten newest and most recently revised public wiki pages, on the wiki's front page. Characters the
+// reader hasn't met yet are shielded like everywhere else (data-appears).
+function wikiUpdatesHtml(base) {
+  if (!wikiFeed.length) return "";
+  return `
+  <section class="updates wiki-updates" aria-labelledby="wiki-updates-heading">
+    <div class="section-head"><h2 id="wiki-updates-heading">Latest updates</h2></div>
+    <ul class="update-list">${wikiFeed
+      .map(
+        ({ p, kind, date }) => `
+      <li${appearsAttr(p)}><a class="update-item" href="${base}${readerWikiUrl(p)}">
+        <span class="badge badge-${kind.toLowerCase()}">${kind}</span>
+        <span class="update-title"><span class="update-label">${esc(sectionTitle(p.section))}</span>${esc(p.title)}</span>
+        <time datetime="${date}">${fmtDate(date)}</time>
+      </a></li>`
+      )
+      .join("")}
+    </ul>
+  </section>`;
+}
+
 // ---------- Codex page ----------
 // Every entry a reader can look up, by kind, with a filter box. Entries the reader hasn't met are
 // shielded like wiki cards (data-appears). Written after the chapter pages, which fill `appearances`.
@@ -1001,7 +1051,10 @@ function codexPage(base = "") {
   const body = `
 <main class="wiki wiki-index codex">
   <label class="filter">${ICONS.search}<input type="search" id="wiki-filter" placeholder="Filter the wiki" autocomplete="off" aria-label="Filter the wiki"></label>
-  ${home ? `<div id="wiki-home">${home}</div>` : `
+  ${home || wikiFeed.length ? `<div id="wiki-home">${home || `
+  <header class="wiki-head">
+    <h1 class="wiki-title">Wiki</h1>
+  </header>`}${wikiUpdatesHtml(base)}</div>` : `
   <header class="wiki-head">
     <h1 class="wiki-title">Wiki</h1>
     <p class="wiki-lede">Every character, place, group and piece of lore. Names in the chapters open the same cards; each links to its full page.</p>
