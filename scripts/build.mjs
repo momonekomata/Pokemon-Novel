@@ -408,6 +408,29 @@ function topbar(base, current) {
 </header>`;
 }
 
+// ---------- Browser-tab icon ----------
+// A picture named in site.config.json "favicon" (default favicon.png) in the illustrations folder
+// becomes the tab icon and the phone home-screen icon. Without one, a 万 in the accent colour is used.
+const faviconImage = (() => {
+  const name = (config.favicon || "favicon.png").toLowerCase();
+  return imageByName.get(name) || null;
+})();
+const faviconTags = (base) =>
+  faviconImage && sharp
+    ? `<link rel="icon" type="image/png" sizes="32x32" href="${base}favicon-32.png">\n<link rel="icon" type="image/png" sizes="192x192" href="${base}favicon-192.png">\n<link rel="apple-touch-icon" href="${base}apple-touch-icon.png">`
+    : `<link rel="icon" type="image/svg+xml" href="${base}favicon.svg">`;
+async function writeFavicon() {
+  if (faviconImage && sharp) {
+    const src = join(CONTENT, faviconImage);
+    const square = (size, file) => sharp(src).rotate().resize(size, size, { fit: "cover", position: "attention" }).png().toFile(join(OUT, file));
+    await square(32, "favicon-32.png");
+    await square(192, "favicon-192.png");
+    await square(180, "apple-touch-icon.png");
+    return;
+  }
+  writeFileSync(join(OUT, "favicon.svg"), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#b5452f"/><text x="32" y="45" font-size="38" text-anchor="middle" fill="#fff" font-family="'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP','Noto Serif CJK JP',serif">万</text></svg>`);
+}
+
 function layout({ title, description = config.description, base, body, bodyClass = "", current, scripts = ["reader.js"], robots }) {
   return `<!doctype html>
 <html lang="${config.lang || "en"}">
@@ -421,6 +444,7 @@ ${robots ? `<meta name="robots" content="${robots}">\n` : ""}<meta name="theme-c
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Inter:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="${base}assets/style.css">
+${faviconTags(base)}
 <script>
   // Apply saved reading preferences before first paint to avoid a flash.
   try { const p = JSON.parse(localStorage.getItem("reader-prefs") || "{}");
@@ -1422,6 +1446,7 @@ write("characters.json", JSON.stringify(Object.fromEntries([
 if (codex.length) write("codex.html", `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=wiki/index.html"><link rel="canonical" href="wiki/index.html"><title>Wiki</title><a href="wiki/index.html">Wiki</a>`);
 const authorPages = await buildAuthorTier();
 const imageCount = await writeImages();
+await writeFavicon();
 
 console.log(
   `Built ${main.length} chapters/interludes, ${extras.length} side stories, ` +

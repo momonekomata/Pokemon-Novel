@@ -29,6 +29,8 @@ encrypted in the build (PBKDF2 + AES-256-GCM) and only open with the author pass
   A `- Aliases: …` line on a wiki page adds names it can be found by.
 - A spoiler shield for characters and codex entries not met yet
 - Illustrations between paragraphs, search, "Latest updates" and "What changed" pages
+- A browser-tab icon: a picture named `favicon.png` in the illustrations folder (cropped square; the name
+  can be changed with `favicon` in `site.config.json`), else a 万 in the accent colour
 - Extras: a "Who Said It?" quiz and a "Cast Shuffle" prompt toy, both behind the spoiler shield and both
   growing with the story. The quiz mixes the lines in `Quiz_Lines.md` (text repository) with lines mined
   from every chapter, the speaker worked out from the prose (speech tags, action beats, first-person
