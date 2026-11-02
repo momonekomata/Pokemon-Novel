@@ -339,27 +339,137 @@
     requestAnimationFrame(() => show(0));
   })();
 
-  // ---------- Illustrations: tap to view full-screen ----------
+  // ---------- Illustrations: tap to view full-screen, pinch / double-tap / wheel to zoom ----------
+  // The viewer zooms the picture itself (the page underneath stays put): two fingers pinch, one finger
+  // drags once zoomed, a double tap or double click toggles a close-up, the mouse wheel zooms at the
+  // pointer. A single tap on the unzoomed picture, the × button or Escape closes it.
   document.addEventListener("click", (e) => {
     const link = e.target.closest(".illust-link");
     if (!link || e.metaKey || e.ctrlKey || e.shiftKey) return;
     e.preventDefault();
-    const img = link.querySelector("img");
+    const thumb = link.querySelector("img");
     const box = document.createElement("div");
     box.className = "lightbox";
     box.setAttribute("role", "dialog");
-    box.setAttribute("aria-label", img.alt || "Illustration");
-    box.innerHTML = `<img src="${link.getAttribute("href")}" alt="">`;
-    box.querySelector("img").alt = img.alt;
-    const close = () => {
-      box.remove();
-      document.removeEventListener("keydown", onKey);
-      link.focus();
+    box.setAttribute("aria-label", thumb.alt || "Illustration");
+    box.innerHTML = `<img src="${link.getAttribute("href")}" alt="" draggable="false"><button type="button" class="lightbox-close" aria-label="Close">×</button><p class="lightbox-hint">Pinch or double-tap to zoom</p>`;
+    const img = box.querySelector("img");
+    img.alt = thumb.alt;
+
+    let s = 1, tx = 0, ty = 0;
+    const max = () => Math.max(3, img.naturalWidth / (img.offsetWidth || 1) * 1.5);
+    const clamp = () => {
+      const w = img.offsetWidth * s, h = img.offsetHeight * s;
+      const mx = Math.max(0, (w - box.clientWidth) / 2), my = Math.max(0, (h - box.clientHeight) / 2);
+      tx = Math.min(mx, Math.max(-mx, tx));
+      ty = Math.min(my, Math.max(-my, ty));
     };
+    const draw = (animate) => {
+      clamp();
+      img.style.transition = animate ? "transform .2s ease" : "none";
+      img.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+      box.classList.toggle("zoomed", s > 1.01);
+    };
+    // Zoom to `to` keeping the picture point under (cx, cy) (client coordinates) where it is.
+    const zoomAt = (to, cx, cy, animate) => {
+      to = Math.min(max(), Math.max(1, to));
+      const r = box.getBoundingClientRect();
+      const px = cx - r.left - r.width / 2, py = cy - r.top - r.height / 2;
+      tx = px - (px - tx) * (to / s);
+      ty = py - (py - ty) * (to / s);
+      s = to;
+      if (s === 1) tx = ty = 0;
+      draw(animate);
+    };
+
+    const pts = new Map();
+    let pinch = null, drag = null, moved = false, lastTap = 0, tapTimer = 0;
+    box.addEventListener("pointerdown", (ev) => {
+      if (ev.target.closest(".lightbox-close")) return;
+      box.setPointerCapture(ev.pointerId);
+      pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      moved = false;
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+        drag = null;
+      } else if (pts.size === 1) {
+        drag = { x: ev.clientX, y: ev.clientY, tx, ty, t: Date.now() };
+      }
+    });
+    box.addEventListener("pointermove", (ev) => {
+      if (!pts.has(ev.pointerId)) return;
+      pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (pinch && pts.size >= 2) {
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        // Follow the fingers: pan by the midpoint's travel, then scale about it.
+        tx += mx - pinch.mx;
+        ty += my - pinch.my;
+        pinch.mx = mx;
+        pinch.my = my;
+        zoomAt(pinch.s * d / pinch.d, mx, my, false);
+        moved = true;
+      } else if (drag) {
+        const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+        if (Math.abs(dx) + Math.abs(dy) > 6) moved = true;
+        if (s > 1) {
+          tx = drag.tx + dx;
+          ty = drag.ty + dy;
+          draw(false);
+        }
+      }
+    });
+    const up = (ev) => {
+      if (!pts.delete(ev.pointerId)) return;
+      if (pts.size < 2) pinch = null;
+      if (pts.size === 1) {
+        // One finger left after a pinch: carry on dragging from here.
+        const [p] = [...pts.values()];
+        drag = { x: p.x, y: p.y, tx, ty, t: Date.now() };
+        return;
+      }
+      if (pts.size) return;
+      const wasTap = drag && !moved && Date.now() - drag.t < 350 && ev.type === "pointerup";
+      drag = null;
+      if (!wasTap) return;
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        clearTimeout(tapTimer);
+        lastTap = 0;
+        zoomAt(s > 1.01 ? 1 : Math.min(2.5, max()), ev.clientX, ev.clientY, true);
+      } else {
+        lastTap = now;
+        // A lone tap closes the unzoomed picture (after waiting to see if it's a double tap).
+        if (s <= 1.01) tapTimer = setTimeout(close, 300);
+      }
+    };
+    box.addEventListener("pointerup", up);
+    box.addEventListener("pointercancel", up);
+    box.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      zoomAt(s * Math.exp(-ev.deltaY * (ev.deltaMode === 1 ? 0.05 : 0.0015)), ev.clientX, ev.clientY, false);
+    }, { passive: false });
+    box.querySelector(".lightbox-close").addEventListener("click", () => close());
+
     const onKey = (ev) => { if (ev.key === "Escape") close(); };
-    box.addEventListener("click", close);
+    const onResize = () => draw(false);
+    const root = document.documentElement;
+    const prevOverflow = root.style.overflow;
+    function close() {
+      clearTimeout(tapTimer);
+      box.remove();
+      root.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onResize);
+      link.focus();
+    }
+    root.style.overflow = "hidden";
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
     document.body.appendChild(box);
+    box.querySelector(".lightbox-close").focus({ preventScroll: true });
   });
 
   // ---------- Wiki filter (also runs once an author page is unlocked) ----------

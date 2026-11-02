@@ -622,10 +622,53 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   place-items: center;
   padding: 16px;
   background: rgb(10 10 12 / .92);
-  cursor: zoom-out;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: contain;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: zoom-in;
   animation: fade-in .15s ease;
 }
-.lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 2px; }
+.lightbox.zoomed { cursor: grab; }
+.lightbox.zoomed:active { cursor: grabbing; }
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 2px;
+  transform-origin: center;
+  will-change: transform;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+.lightbox-close {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / .14);
+  color: #fff;
+  font: 28px/1 var(--sans);
+  cursor: pointer;
+}
+.lightbox-close:hover, .lightbox-close:focus-visible { background: rgb(255 255 255 / .26); }
+.lightbox-hint {
+  position: absolute;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  font: 13px/1.4 var(--sans);
+  color: rgb(255 255 255 / .6);
+  pointer-events: none;
+  transition: opacity .3s;
+}
+.lightbox.zoomed .lightbox-hint { opacity: 0; }
 @keyframes fade-in { from { opacity: 0; } }
 
 /* ---------- Character cards ---------- */
