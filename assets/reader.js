@@ -339,10 +339,12 @@
     requestAnimationFrame(() => show(0));
   })();
 
-  // ---------- Illustrations: tap to view full-screen, pinch / double-tap / wheel to zoom ----------
-  // The viewer zooms the picture itself (the page underneath stays put): two fingers pinch, one finger
-  // drags once zoomed, a double tap or double click toggles a close-up, the mouse wheel zooms at the
-  // pointer. A single tap on the unzoomed picture, the × button or Escape closes it.
+  // ---------- Illustrations: tap to view full-screen, then zoom and move around ----------
+  // The picture opens fitted to the screen and zooms itself (the page underneath stays put).
+  // Mouse: click the picture to zoom to full detail and back; the wheel (or a trackpad) moves around a
+  // zoomed picture, Ctrl + wheel or a trackpad pinch zooms; drag moves too; a click beside the picture
+  // closes. Touch: pinch, drag once zoomed, double tap for a close-up, a single tap closes.
+  // The × button and Escape always close.
   document.addEventListener("click", (e) => {
     const link = e.target.closest(".illust-link");
     if (!link || e.metaKey || e.ctrlKey || e.shiftKey) return;
@@ -352,7 +354,9 @@
     box.className = "lightbox";
     box.setAttribute("role", "dialog");
     box.setAttribute("aria-label", thumb.alt || "Illustration");
-    box.innerHTML = `<img src="${link.getAttribute("href")}" alt="" draggable="false"><button type="button" class="lightbox-close" aria-label="Close">×</button><p class="lightbox-hint">Pinch or double-tap to zoom</p>`;
+    box.innerHTML = `<img src="${link.getAttribute("href")}" alt="" draggable="false"><button type="button" class="lightbox-close" aria-label="Close">×</button><p class="lightbox-hint"></p>`;
+    const mouse = matchMedia("(pointer: fine)").matches;
+    box.querySelector(".lightbox-hint").textContent = mouse ? "Click the picture to zoom · scroll to move around" : "Pinch or double-tap to zoom";
     const img = box.querySelector("img");
     img.alt = thumb.alt;
 
@@ -431,9 +435,14 @@
         return;
       }
       if (pts.size) return;
-      const wasTap = drag && !moved && Date.now() - drag.t < 350 && ev.type === "pointerup";
+      const wasTap = drag && !moved && (ev.pointerType === "mouse" || Date.now() - drag.t < 350) && ev.type === "pointerup";
       drag = null;
       if (!wasTap) return;
+      if (ev.pointerType === "mouse") {
+        // Click on the picture: full detail at that spot, or back to the whole picture. Beside it: close.
+        if (!onImg(ev)) return close();
+        return zoomAt(s > 1.01 ? 1 : Math.max(2, Math.min(max(), img.naturalWidth / (img.offsetWidth || 1))), ev.clientX, ev.clientY, true);
+      }
       const now = Date.now();
       if (now - lastTap < 300) {
         clearTimeout(tapTimer);
@@ -449,8 +458,20 @@
     box.addEventListener("pointercancel", up);
     box.addEventListener("wheel", (ev) => {
       ev.preventDefault();
-      zoomAt(s * Math.exp(-ev.deltaY * (ev.deltaMode === 1 ? 0.05 : 0.0015)), ev.clientX, ev.clientY, false);
+      const unit = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? box.clientHeight : 1;
+      if (ev.ctrlKey || ev.metaKey) return zoomAt(s * Math.exp(-ev.deltaY * unit * 0.0015), ev.clientX, ev.clientY, false);
+      if (s <= 1.01) return;
+      // Scroll moves around the zoomed picture (Shift + wheel goes sideways).
+      const dx = ev.shiftKey && !ev.deltaX ? ev.deltaY : ev.deltaX, dy = ev.shiftKey && !ev.deltaX ? 0 : ev.deltaY;
+      tx -= dx * unit;
+      ty -= dy * unit;
+      draw(false);
     }, { passive: false });
+    const onImg = (ev) => {
+      const r = img.getBoundingClientRect();
+      return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+    };
+    box.addEventListener("mousemove", (ev) => box.classList.toggle("over-img", onImg(ev)));
     box.querySelector(".lightbox-close").addEventListener("click", () => close());
 
     const onKey = (ev) => { if (ev.key === "Escape") close(); };

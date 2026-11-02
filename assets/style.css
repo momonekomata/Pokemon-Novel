@@ -631,10 +631,15 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   animation: fade-in .15s ease;
 }
 .lightbox.zoomed { cursor: grab; }
+.lightbox.over-img { cursor: zoom-in; }
+.lightbox.zoomed.over-img { cursor: grab; }
+.lightbox:not(.over-img):not(.zoomed) { cursor: zoom-out; }
 .lightbox.zoomed:active { cursor: grabbing; }
 .lightbox img {
-  max-width: 100%;
-  max-height: 100%;
+  /* Fit the whole picture on screen (a percentage max-height doesn't resolve inside the grid). */
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   object-fit: contain;
   border-radius: 2px;
   transform-origin: center;
