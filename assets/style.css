@@ -792,6 +792,26 @@ mark.find-current { background: color-mix(in srgb, var(--accent) 50%, transparen
 .legend { display: flex; gap: 10px; font-size: 13px; }
 .diff { font-family: var(--body-font); font-size: 1.0625rem; line-height: 1.7; }
 .diff-block { padding: 18px 0; border-top: 1px solid var(--faint); }
+.revisions { margin-top: 28px; }
+.revision { border-top: 1px solid var(--faint); }
+.revision:last-child { border-bottom: 1px solid var(--faint); }
+.revision > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 14px 0;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--sans);
+}
+.revision > summary::-webkit-details-marker { display: none; }
+.revision > summary::before { content: "▸"; display: inline-block; color: var(--muted); transition: transform .15s; }
+.revision[open] > summary::before { transform: rotate(90deg); }
+.rev-date { font-weight: 600; }
+.rev-meta { color: var(--muted); font-size: 14px; }
+.revision .diff-block:first-child { border-top: 0; padding-top: 0; }
+.revision .diff { padding-bottom: 8px; }
 .diff p { margin: 0 0 .9em; }
 .diff .ctx { color: var(--muted); font-size: .95em; }
 .diff ins, .legend ins {

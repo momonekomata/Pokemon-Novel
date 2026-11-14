@@ -1,9 +1,10 @@
 // Builds the site into _site/ from content/ (mirrored from Google Drive by sync-drive.mjs).
 //   Reader tier: chapters, side stories, latest updates, and the character/world wiki.
 //   Author tier: the full wiki and reference files, encrypted with AUTHOR_PASSWORD.
+import { execFileSync } from "node:child_process";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
-import { loadContent, isReaderPage, stripAuthorNotes, sha256 } from "../lib/content.mjs";
+import { loadContent, isReaderPage, manuscriptText, stripAuthorNotes, sha256 } from "../lib/content.mjs";
 import { escapeHtml as esc, renderMarkdown } from "../lib/markdown.mjs";
 import { deriveKey, encrypt, KDF_ITERATIONS } from "../lib/vault.mjs";
 import { buildNameIndex, linkCharacters } from "../lib/characters.mjs";
@@ -15,8 +16,10 @@ import { parseQuizLines, lineInChapter, mineLines, pageGender } from "../lib/qui
 const OUT = process.env.OUT_DIR || "_site";
 const CONTENT = process.env.CONTENT_DIR || "content";
 const UPDATES = process.env.UPDATES_FILE || "data/updates.json";
-// Last published text of each chapter, and the latest revision's diff ("What changed" pages).
-// Kept on the NAS next to updates.json; never committed (they hold chapter text).
+// "What changed" pages. With the vault's git history at hand (VAULT_DIR, or CONTENT_DIR itself being a
+// git checkout) every revision of a chapter is listed. Without it, the build falls back to the last
+// published text it kept here and shows only the latest revision. Never committed (they hold chapter text).
+const VAULT_DIR = process.env.VAULT_DIR || "vault";
 const SNAPSHOTS = process.env.SNAPSHOT_DIR || join(dirname(UPDATES), "snapshots");
 const CHANGES = join(dirname(SNAPSHOTS), "changes");
 const config = JSON.parse(readFileSync("site.config.json", "utf8"));
@@ -193,12 +196,56 @@ writeFileSync(UPDATES, JSON.stringify(updates, null, 2) + "\n");
 
 mkdirSync(SNAPSHOTS, { recursive: true });
 mkdirSync(CHANGES, { recursive: true });
-const changes = new Map(); // slug -> { from, to, html, changed }
+const changes = new Map(); // slug -> { to, revisions: [{ from, to, html, changed }] newest first, since }
+const historyRepo = [VAULT_DIR, CONTENT].find((d) => existsSync(join(d, ".git")));
+const git = (...args) => execFileSync("git", ["-C", historyRepo, ...args], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+const normHash = (src) => sha256(src.replace(/\s+/g, " "));
+
+// Every revision of a chapter from the vault's history. A day's commits count as one revision (the
+// day's last version; days by UTC, as dates are shown); a commit that leaves the reader's text as it
+// was (an author note, the title) isn't one. Returns null when the history doesn't reach the current text.
+function chapterHistory(c) {
+  let log;
+  try { log = git("log", "--follow", "--format=>%H %cI", "--name-only", "--", c.path); } catch { return null; }
+  const commits = [];
+  for (const block of log.split(">").slice(1)) {
+    const [head, ...files] = block.trim().split("\n");
+    const [sha, date] = head.split(" ");
+    commits.push({ sha, date, path: files.find(Boolean) || c.path });
+  }
+  commits.reverse(); // oldest first
+  const days = new Map();
+  for (const k of commits) days.set(new Date(k.date).toISOString().slice(0, 10), k);
+  const versions = [];
+  for (const k of days.values()) {
+    let raw;
+    try { raw = git("show", `${k.sha}:${k.path}`); } catch { continue; }
+    const src = manuscriptText(raw, config.manuscript).src;
+    const hash = normHash(src);
+    if (versions.at(-1)?.hash === hash) continue;
+    versions.push({ date: k.date, src, hash });
+  }
+  if (!versions.length || versions.at(-1).hash !== c.hash) return null;
+  const revisions = [];
+  for (let i = 1; i < versions.length; i++) {
+    const diff = chapterDiff(versions[i - 1].src, versions[i].src);
+    if (diff.changed) revisions.push({ from: versions[i - 1].date, to: versions[i].date, ...diff });
+  }
+  return { since: versions[0].date, revisions: revisions.reverse() };
+}
+
+let historyCount = 0;
 for (const c of chapters) {
   const snap = join(SNAPSHOTS, `${c.slug}.md`);
   const changeFile = join(CHANGES, `${c.slug}.json`);
+  const hist = historyRepo ? chapterHistory(c) : null;
+  if (hist) {
+    historyCount++;
+    if (hist.revisions.length) changes.set(c.slug, { to: hist.revisions[0].to, ...hist });
+  }
+  // The fallback: the latest revision this build has seen happen.
   const before = existsSync(snap) ? readFileSync(snap, "utf8") : null;
-  if (before !== null && sha256(before.replace(/\s+/g, " ")) !== c.hash) {
+  if (!hist && before !== null && normHash(before) !== c.hash) {
     const diff = chapterDiff(before, c.src);
     if (diff.changed) {
       const prev = previous?.[c.slug];
@@ -206,11 +253,12 @@ for (const c of chapters) {
     }
   }
   writeFileSync(snap, c.src);
-  if (existsSync(changeFile)) {
+  if (!hist && existsSync(changeFile)) {
     const ch = JSON.parse(readFileSync(changeFile, "utf8"));
-    if (ch.hash === c.hash) changes.set(c.slug, ch); // only the diff that led to the current text
+    if (ch.hash === c.hash) changes.set(c.slug, { to: ch.to, revisions: [ch] }); // only the diff that led to the current text
   }
 }
+if (historyRepo) console.log(`Revision history from git (${historyRepo}/) for ${historyCount} of ${chapters.length} chapters; ${changes.size} have revisions.`);
 
 const feed = chapters
   .map((c) => {
@@ -868,20 +916,27 @@ function extrasPage() {
 
 function changesPage(c) {
   const ch = changes.get(c.slug);
-  const n = ch.changed;
+  const revs = ch.revisions;
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const revision = (r, i) => `
+  <details class="revision"${i === 0 ? " open" : ""}>
+    <summary><span class="rev-date">${fmtDate(r.to)}</span><span class="rev-meta">${i === 0 ? "Latest · " : ""}${plural(r.changed, "passage")} changed${r.from ? ` since ${fmtDate(r.from)}` : ""}</span></summary>
+    <article class="diff">${r.html}</article>
+  </details>`;
   const body = `
 <main class="wiki changes">
   <nav class="crumbs" aria-label="Breadcrumb"><a href="../index.html#chapters">Chapters</a><span aria-hidden="true">›</span><span>${esc(c.label)}</span></nav>
   <header class="wiki-head">
     <p class="chapter-label">What changed</p>
     <h1 class="wiki-title">${esc(c.title)}</h1>
-    <p class="wiki-lede">Revised ${fmtDate(ch.to)}${ch.from ? `, since the version of ${fmtDate(ch.from)}` : ""} · ${n} passage${n === 1 ? "" : "s"} changed</p>
+    <p class="wiki-lede">${revs.length === 1 ? `Revised ${fmtDate(ch.to)}` : `${plural(revs.length, "revision")}, the latest on ${fmtDate(ch.to)}`}${ch.since ? ` · first version ${fmtDate(ch.since)}` : ""}</p>
     <div class="changes-actions">
       <a class="btn btn-primary" href="../${c.slug}.html">Read the chapter</a>
       <span class="legend"><ins>added</ins> <del>removed</del></span>
     </div>
   </header>
-  <article class="diff">${ch.html}</article>
+  <section class="revisions" aria-label="Revisions, newest first">${revs.map(revision).join("")}
+  </section>
 </main>`;
   return layout({ title: `What changed: ${c.title} · ${config.title}`, base: "../", body, bodyClass: "page-wiki", current: "read" });
 }

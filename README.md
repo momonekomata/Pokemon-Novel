@@ -31,7 +31,9 @@ encrypted in the build (PBKDF2 + AES-256-GCM) and only open with the author pass
   (`wikiUpdates.show` in `site.config.json` changes the number). A page counts as revised when its
   reader-visible text changes.
 - A spoiler shield for characters and codex entries not met yet
-- Illustrations between paragraphs, search, "Latest updates" and "What changed" pages
+- Illustrations between paragraphs, search, "Latest updates" and "What changed" pages. "What changed" lists
+  every revision of a chapter, newest first, from the text repository's git history (one revision per day;
+  edits readers can't see, such as the author note, don't count)
 - A browser-tab icon: a picture named `favicon.png` in the illustrations folder (cropped square; the name
   can be changed with `favicon` in `site.config.json`), else a 万 in the accent colour
 - Extras: a "Who Said It?" quiz and a "Cast Shuffle" prompt toy, both behind the spoiler shield and both
