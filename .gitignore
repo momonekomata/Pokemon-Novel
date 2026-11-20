@@ -22,3 +22,6 @@ drive-mirror/
 mirror-state/
 .env
 drive-copy.log
+
+# Per-title settings and file dates made by scripts/build-all.mjs
+.build/

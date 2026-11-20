@@ -8,9 +8,11 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const book = document.documentElement.dataset.book;
+  const ns = (k) => "extras-" + k + (book ? ":" + book : "");
   const store = {
-    get(k, d) { try { return JSON.parse(localStorage.getItem("extras-" + k)) ?? d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem("extras-" + k, JSON.stringify(v)); } catch (e) {} },
+    get(k, d) { try { return JSON.parse(localStorage.getItem(ns(k))) ?? d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(ns(k), JSON.stringify(v)); } catch (e) {} },
   };
   const copy = (text, btn) => {
     const done = (msg) => { const t = btn.textContent; btn.textContent = msg; setTimeout(() => (btn.textContent = t), 1400); };

@@ -12,6 +12,7 @@
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { BOOK_FILE, findBooks } from "../lib/books.mjs";
 
 const config = JSON.parse(readFileSync("site.config.json", "utf8"));
 const OUT = "content";
@@ -23,7 +24,8 @@ if (!existsSync(join(VAULT, ".git"))) {
   process.exit(1);
 }
 
-// Root Markdown and everything under wiki/, the same scope the Drive sync used.
+// Root Markdown, everything under wiki/ (the same scope the Drive sync used), and the folders of other
+// titles (a top-level folder with a Book.md).
 function listMarkdown(dir, prefix = "") {
   return readdirSync(join(VAULT, dir), { withFileTypes: true }).flatMap((d) => {
     const rel = prefix ? `${prefix}/${d.name}` : d.name;
@@ -35,7 +37,9 @@ const rootFiles = readdirSync(VAULT, { withFileTypes: true })
   .filter((d) => d.isFile() && d.name.toLowerCase().endsWith(".md"))
   .map((d) => d.name);
 const wikiFiles = existsSync(join(VAULT, wikiFolder)) ? listMarkdown(wikiFolder, wikiFolder) : [];
-const files = [...rootFiles, ...wikiFiles];
+// Other titles: every Markdown file in a top-level folder holding a Book.md (lib/books.mjs).
+const bookFiles = findBooks(VAULT).flatMap((b) => listMarkdown(b.folder, b.folder));
+const files = [...rootFiles, ...wikiFiles, ...bookFiles];
 
 // One pass over the history: newest commit first, so the first date seen for a path is its last
 // modification and the last date seen is when it was added.

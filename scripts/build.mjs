@@ -22,7 +22,14 @@ const UPDATES = process.env.UPDATES_FILE || "data/updates.json";
 const VAULT_DIR = process.env.VAULT_DIR || "vault";
 const SNAPSHOTS = process.env.SNAPSHOT_DIR || join(dirname(UPDATES), "snapshots");
 const CHANGES = join(dirname(SNAPSHOTS), "changes");
-const config = JSON.parse(readFileSync("site.config.json", "utf8"));
+const config = JSON.parse(readFileSync(process.env.SITE_CONFIG || "site.config.json", "utf8"));
+// Set by scripts/build-all.mjs when the site holds more than one title (lib/books.mjs): where the
+// illustrations are (shared by all titles), this title's place in the text repository's history, its
+// id (namespaces what the browser remembers; empty for the main title) and the shelf page.
+const IMAGES = process.env.IMAGE_DIR || CONTENT;
+const HISTORY_PREFIX = process.env.HISTORY_PREFIX || "";
+const BOOK_ID = process.env.BOOK_ID || "";
+const LIBRARY = process.env.LIBRARY_URL || "";
 const extrasCfg = config.extras || {};
 
 if (!existsSync(CONTENT)) {
@@ -30,7 +37,7 @@ if (!existsSync(CONTENT)) {
   process.exit(1);
 }
 
-const { main, extras, wiki, reference } = loadContent(CONTENT, config);
+const { main, extras, wiki, reference } = loadContent(CONTENT, config, process.env.META_FILE || undefined);
 
 // ---------- Side story groups ----------
 // From Side_Stories.md at the top of the Drive folder: "## Group" headings, each followed by a list of
@@ -110,9 +117,9 @@ const FULL_WIDTH = 2400; // opened on tap
 
 const IMAGE_RE = /\.(jpe?g|png|webp|gif|avif)$/i;
 const listImages = (dir, prefix = "") =>
-  readdirSync(join(CONTENT, dir), { withFileTypes: true }).flatMap((d) => {
+  readdirSync(join(IMAGES, dir), { withFileTypes: true }).flatMap((d) => {
     const rel = prefix ? `${prefix}/${d.name}` : d.name;
-    if (d.isDirectory()) return listImages(join(dir, d.name), rel);
+    if (d.isDirectory()) return d.name === ".git" ? [] : listImages(join(dir, d.name), rel);
     return IMAGE_RE.test(d.name) ? [rel] : [];
   });
 const images = listImages("");
@@ -125,7 +132,7 @@ const imageMeta = new Map();
 if (sharp) {
   for (const path of images) {
     try {
-      const m = await sharp(join(CONTENT, path)).metadata();
+      const m = await sharp(join(IMAGES, path)).metadata();
       const rotated = (m.orientation || 1) >= 5; // EXIF says the photo is turned sideways
       imageMeta.set(path, { width: rotated ? m.height : m.width, height: rotated ? m.width : m.height });
     } catch {
@@ -160,7 +167,7 @@ function imageResolver(fromPath, base, tier) {
 
 async function writeImages() {
   for (const [name, { path, ext, resize }] of imageJobs) {
-    const src = join(CONTENT, path);
+    const src = join(IMAGES, path);
     mkdirSync(dirname(join(OUT, name)), { recursive: true });
     if (resize) {
       const out = (file, width, quality) =>
@@ -206,12 +213,12 @@ const normHash = (src) => sha256(src.replace(/\s+/g, " "));
 // was (an author note, the title) isn't one. Returns null when the history doesn't reach the current text.
 function chapterHistory(c) {
   let log;
-  try { log = git("log", "--follow", "--format=>%H %cI", "--name-only", "--", c.path); } catch { return null; }
+  try { log = git("log", "--follow", "--format=>%H %cI", "--name-only", "--", HISTORY_PREFIX + c.path); } catch { return null; }
   const commits = [];
   for (const block of log.split(">").slice(1)) {
     const [head, ...files] = block.trim().split("\n");
     const [sha, date] = head.split(" ");
-    commits.push({ sha, date, path: files.find(Boolean) || c.path });
+    commits.push({ sha, date, path: files.find(Boolean) || HISTORY_PREFIX + c.path });
   }
   commits.reverse(); // oldest first
   const days = new Map();
@@ -367,6 +374,7 @@ const appearsAttr = (p) => {
 };
 
 const ICONS = {
+  shelf: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M9 4v16M14 5l4 15M3 20h18"/></svg>',
   type: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg>',
   list: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>',
   left: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
@@ -473,7 +481,7 @@ function topbar(base, current) {
   return `
 <header class="topbar" id="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="${base}index.html">${esc(config.title)}</a>
+    ${LIBRARY ? `<a class="shelf-link" href="${base}${LIBRARY}" aria-label="All titles">${ICONS.shelf}</a>` : ""}<a class="brand" href="${base}index.html">${esc(config.title)}</a>
     <nav class="topnav" aria-label="Site">${nav}</nav>
     <div class="topbar-actions">
       <a class="icon-btn" href="${base}search.html" aria-label="Search"${current === "search" ? ' aria-current="page"' : ""}>${ICONS.search}</a>
@@ -498,7 +506,7 @@ const faviconTags = (base) =>
     : `<link rel="icon" type="image/svg+xml" href="${base}favicon.svg">`;
 async function writeFavicon() {
   if (faviconImage && sharp) {
-    const src = join(CONTENT, faviconImage);
+    const src = join(IMAGES, faviconImage);
     const square = (size, file) => sharp(src).rotate().resize(size, size, { fit: "cover", position: "attention" }).png().toFile(join(OUT, file));
     await square(32, "favicon-32.png");
     await square(192, "favicon-192.png");
@@ -510,7 +518,7 @@ async function writeFavicon() {
 
 function layout({ title, description = config.description, base, body, bodyClass = "", current, scripts = ["reader.js"], robots }) {
   return `<!doctype html>
-<html lang="${config.lang || "en"}">
+<html lang="${config.lang || "en"}"${BOOK_ID ? ` data-book="${esc(BOOK_ID)}"` : ""}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1552,6 +1560,24 @@ write("characters.json", JSON.stringify(Object.fromEntries([
 ])));
 // The codex is the wiki's front page now; codex.html only forwards there.
 if (codex.length) write("codex.html", `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=wiki/index.html"><link rel="canonical" href="wiki/index.html"><title>Wiki</title><a href="wiki/index.html">Wiki</a>`);
+// For the shelf page (scripts/build-all.mjs): what this title is and where it stands.
+{
+  const coverName = process.env.BOOK_COVER || config.cover || "";
+  const cover = coverName ? imageResolver("", "", "reader")(coverName) : null;
+  const latest = feed[0];
+  write("book.json", JSON.stringify({
+    title: config.title,
+    subtitle: config.subtitle || "",
+    description: config.description || "",
+    author: config.author || "",
+    status: process.env.BOOK_STATUS || config.status || "",
+    chapters: main.length,
+    sideStories: extras.length,
+    words: chapters.reduce((n, c) => n + c.words, 0),
+    cover: cover ? { src: cover.src, width: cover.width, height: cover.height } : null,
+    latest: latest ? { kind: latest.kind, date: latest.date, title: latest.c.title, label: latest.c.label, slug: latest.c.slug } : null,
+  }));
+}
 const authorPages = await buildAuthorTier();
 const imageCount = await writeImages();
 await writeFavicon();

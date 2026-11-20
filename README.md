@@ -47,6 +47,27 @@ encrypted in the build (PBKDF2 + AES-256-GCM) and only open with the author pass
   mentions per chapter, who has gone quiet, and its progression (the details its wiki page ties to a
   chapter, by link or "Ch. N", plus any `## Progression` section of `- Ch. N: …` lines)
 
+## More than one title
+
+The main title lives at the top of the text repository. Any other title is a top-level folder there
+holding a `Book.md`, laid out the same way inside (chapter files at the top of the folder, its own
+`wiki/` beneath); illustrations are shared. `Book.md` names it:
+
+```md
+# Lantern Street
+- Subtitle: …
+- Description: one or two sentences for the shelf
+- Cover: lantern_cover.png
+- Status: Ongoing
+- Order: 2
+```
+
+plus, optionally, a ```` ```json ```` block of `site.config.json` settings for that title alone. With a
+second title the front page becomes a shelf of titles, each title gets its own folder (the main one
+`/manyo/`, `"id"` in `site.config.json`; its old addresses forward there), and each keeps its own
+reading progress, spoiler shield, extras and author area. The main title's cover is `"cover"` in
+`site.config.json`; the shelf's heading is `"library": {"title", "subtitle"}`.
+
 ## Working locally
 
 ```sh

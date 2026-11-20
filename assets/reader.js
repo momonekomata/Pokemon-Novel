@@ -1,7 +1,9 @@
 (() => {
   const root = document.documentElement;
   const PREFS_KEY = "reader-prefs";
-  const PROGRESS_KEY = "reader-progress";
+  // Each title on a shared site remembers its own reading (the main title keeps the plain keys).
+  const BOOK = document.documentElement.dataset.book || "";
+  const PROGRESS_KEY = BOOK ? `reader-progress:${BOOK}` : "reader-progress";
 
   const load = (key) => { try { return JSON.parse(localStorage.getItem(key) || "{}"); } catch (e) { return {}; } };
   const save = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} };
