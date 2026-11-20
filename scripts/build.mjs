@@ -10,6 +10,7 @@ import { deriveKey, encrypt, KDF_ITERATIONS } from "../lib/vault.mjs";
 import { buildNameIndex, linkCharacters } from "../lib/characters.mjs";
 import { codexEntries, combinedIndex, countMentions, progressionItems } from "../lib/codex.mjs";
 import { chapterDiff } from "../lib/diff.mjs";
+import { kebab } from "../lib/books.mjs";
 import { parseTidyReport, parseAmbiguities } from "../lib/tidy.mjs";
 import { parseQuizLines, lineInChapter, mineLines, pageGender } from "../lib/quiz.mjs";
 
@@ -898,13 +899,87 @@ function extrasData() {
   };
 }
 
+// ---------- Interactive pages ----------
+// Self-contained .html files (a seating chart, a map, a family tree) in the title's pages/ folder.
+// Each is shown inside the site's frame, with the top bar, and listed on the Extras page. In the file:
+//   <title>            the page's name
+//   <meta name="description" content="…">          a line for the list
+//   <meta name="spoilers-from" content="Chapter 2">  hidden behind the spoiler shield until that
+//                      chapter has been read ("2", "Chapter 2", a chapter's title or its address)
+const PAGES_DIR = join(CONTENT, config.pagesFolder || "pages");
+function chapterRef(ref) {
+  const r = (ref || "").trim();
+  if (!r) return null;
+  const n = r.match(/^(?:ch(?:apter)?\.?\s*)?(\d+(?:\.\d+)?)$/i);
+  if (n) {
+    const at = main.filter((c) => c.slot && c.slot[0] === parseFloat(n[1]));
+    return (at.find((c) => !c.isInterlude) || at[0])?.slug || null;
+  }
+  const want = r.toLowerCase().replace(/\.html$/, "");
+  return chapters.find((c) => c.slug === want || c.title.toLowerCase() === want)?.slug || null;
+}
+const interactivePages = (existsSync(PAGES_DIR) ? readdirSync(PAGES_DIR) : [])
+  .filter((f) => /\.html?$/i.test(f))
+  .sort()
+  .map((file) => {
+    const html = readFileSync(join(PAGES_DIR, file), "utf8");
+    const meta = (name) => html.match(new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["']([^"']*)["']`, "i"))?.[1]?.trim() || "";
+    const title = (html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || file.replace(/\.html?$/i, "").replace(/_/g, " ")).trim();
+    const gate = meta("spoilers-from");
+    const after = chapterRef(gate);
+    if (gate && !after) console.warn(`pages/${file}: spoilers-from "${gate}" doesn't name a chapter; the page isn't shielded.`);
+    return { file, title, description: meta("description"), after, slug: kebab(file.replace(/\.html?$/i, "")) || "page" };
+  });
+
+function interactiveList() {
+  if (!interactivePages.length) return "";
+  return `
+  <section class="x-pages" aria-labelledby="x-pages-head">
+    <div class="section-head"><h2 id="x-pages-head">Maps and charts</h2></div>
+    <ul class="x-page-list">${interactivePages.map((pg) => `
+      <li${pg.after ? ` data-appears="${pg.after}"` : ""}><a class="x-page" href="pages/${pg.slug}.html"><span class="x-page-title">${esc(pg.title)}</span>${pg.description ? `<span class="x-page-desc">${esc(pg.description)}</span>` : ""}</a></li>`).join("")}
+    </ul>
+  </section>`;
+}
+
+function interactivePage(pg) {
+  const body = `
+<main class="wiki interactive"${pg.after ? ` data-appears="${pg.after}" data-veil="This page gives away things from a chapter you haven't reached yet."` : ""}>
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../extras.html">Extras</a><span aria-hidden="true">›</span><span>${esc(pg.title)}</span></nav>
+  <iframe class="interactive-frame" src="files/${encodeURIComponent(pg.file)}" title="${esc(pg.title)}" loading="eager"></iframe>
+  <p class="interactive-open"><a href="files/${encodeURIComponent(pg.file)}" target="_blank" rel="noopener">Open full screen</a></p>
+</main>
+<script>
+  // Grow the frame to the page inside it (same site, so it can be measured), and pass on the
+  // reading theme so the page's own light or dark styles follow the site's.
+  (() => {
+    const f = document.querySelector(".interactive-frame");
+    const fit = () => { try { const d = f.contentDocument; f.style.height = Math.max(d.documentElement.scrollHeight, d.body.scrollHeight) + "px"; } catch (e) {} };
+    const theme = () => {
+      try {
+        const t = document.documentElement.dataset.theme;
+        const d = f.contentDocument.documentElement;
+        if (t === "dark") d.dataset.theme = "dark"; else if (t) d.dataset.theme = "light"; else delete d.dataset.theme;
+      } catch (e) {}
+    };
+    f.addEventListener("load", () => {
+      theme(); fit();
+      try { new ResizeObserver(fit).observe(f.contentDocument.body); } catch (e) {}
+      new MutationObserver(theme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    });
+    addEventListener("resize", fit);
+  })();
+</script>`;
+  return layout({ title: `${pg.title} · ${config.title}`, description: pg.description || config.description, base: "../", body, bodyClass: "page-wiki page-interactive", current: "extras" });
+}
+
 function extrasPage() {
   const body = `
 <main class="wiki extras">
   <header class="wiki-head">
     <h1 class="wiki-title">Extras</h1>
     <p class="wiki-lede">Two small games built from the story so far. Only characters and lines from chapters you've opened appear, unless the spoiler shield is off.</p>
-  </header>
+  </header>${interactiveList()}
   <div class="x-tabs" role="tablist" aria-label="Extras">
     <button class="x-tab" role="tab" id="tab-quiz" aria-controls="quiz" data-x-tab="quiz">Who Said It?</button>
     <button class="x-tab" role="tab" id="tab-shuffle" aria-controls="shuffle" data-x-tab="shuffle">Cast Shuffle</button>
@@ -1550,6 +1625,10 @@ write("search-index.json", JSON.stringify(searchIndex()));
 write("order.json", JSON.stringify({ main: main.map((c) => c.slug), extras: extras.map((c) => c.slug) }));
 readerWiki.forEach((p) => write(readerWikiUrl(p), readerWikiPage(p)));
 // After the chapter pages: extras.json carries where each character appears, for the spoiler shield.
+if (interactivePages.length) {
+  cpSync(PAGES_DIR, join(OUT, "pages", "files"), { recursive: true, filter: (src) => !/\.md$/i.test(src) });
+  interactivePages.forEach((pg) => write(`pages/${pg.slug}.html`, interactivePage(pg)));
+}
 if (extrasCfg.enabled) {
   write("extras.html", extrasPage());
   write("extras.json", JSON.stringify(extrasData()));

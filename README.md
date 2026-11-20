@@ -68,6 +68,16 @@ second title the front page becomes a shelf of titles, each title gets its own f
 reading progress, spoiler shield, extras and author area. The main title's cover is `"cover"` in
 `site.config.json`; the shelf's heading is `"library": {"title", "subtitle"}`.
 
+## Interactive pages
+
+A self-contained `.html` page (a seating chart, a map, a family tree) goes in a `pages/` folder: in a
+title's folder for that title, or at the top of the text repository for the main title. Pictures,
+styles or scripts it uses can sit next to it. Each page is shown inside the site's frame (top bar,
+reading theme passed on) and listed under "Maps and charts" on that title's Extras page. In the file,
+`<title>` names it, `<meta name="description" content="…">` gives the line under the name, and
+`<meta name="spoilers-from" content="Chapter 2">` keeps it behind the spoiler shield until that
+chapter has been read.
+
 ## Working locally
 
 ```sh

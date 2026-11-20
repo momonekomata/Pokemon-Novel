@@ -200,7 +200,7 @@
         veil = document.createElement("div");
         veil.id = "spoiler-veil";
         veil.className = "spoiler-veil";
-        veil.innerHTML = `<p class="veil-title">Spoiler shield</p><p>You haven't reached the chapter where this character first appears yet.</p><div class="veil-actions"><a class="btn btn-primary" href="${siteRoot}${first}.html">Go to that chapter</a><button class="btn btn-ghost" type="button">Show anyway</button></div>`;
+        veil.innerHTML = `<p class="veil-title">Spoiler shield</p><p>${page.dataset.veil || "You haven't reached the chapter where this character first appears yet."}</p><div class="veil-actions"><a class="btn btn-primary" href="${siteRoot}${first}.html">Go to that chapter</a><button class="btn btn-ghost" type="button">Show anyway</button></div>`;
         veil.querySelector("button").addEventListener("click", () => { page.dataset.revealed = "1"; veil.remove(); page.classList.remove("veiled"); });
         page.prepend(veil);
         page.classList.add("veiled");

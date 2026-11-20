@@ -40,6 +40,17 @@ const wikiFiles = existsSync(join(VAULT, wikiFolder)) ? listMarkdown(wikiFolder,
 // Other titles: every Markdown file in a top-level folder holding a Book.md (lib/books.mjs).
 const bookFiles = findBooks(VAULT).flatMap((b) => listMarkdown(b.folder, b.folder));
 const files = [...rootFiles, ...wikiFiles, ...bookFiles];
+// Interactive pages (scripts/build.mjs): a pages/ folder at the top or in a title's folder, copied
+// whole (the pages may bring their own pictures, styles or scripts). They don't need dates.
+const listAll = (dir, prefix) =>
+  readdirSync(join(VAULT, dir), { withFileTypes: true }).flatMap((d) =>
+    d.isDirectory() ? listAll(join(dir, d.name), `${prefix}/${d.name}`) : [`${prefix}/${d.name}`]);
+const pageFolders = ["pages", ...findBooks(VAULT).map((b) => `${b.folder}/pages`)].filter((d) => existsSync(join(VAULT, d)));
+const pageFiles = pageFolders.flatMap((d) => listAll(d, d)).filter((f) => !f.toLowerCase().endsWith(".md"));
+for (const path of pageFiles) {
+  mkdirSync(dirname(join(OUT, path)), { recursive: true });
+  copyFileSync(join(VAULT, path), join(OUT, path));
+}
 
 // One pass over the history: newest commit first, so the first date seen for a path is its last
 // modification and the last date seen is when it was added.
@@ -89,4 +100,4 @@ for (const path of files) {
 const sorted = Object.fromEntries(Object.keys(meta).sort().map((k) => [k, meta[k]]));
 writeFileSync(metaFile, JSON.stringify(sorted, null, 2));
 const head = execFileSync("git", ["-C", VAULT, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
-console.log(`Copied ${copied} Markdown files from the vault (commit ${head}) into ${OUT}/`);
+console.log(`Copied ${copied} Markdown files${pageFiles.length ? ` and ${pageFiles.length} interactive-page files` : ""} from the vault (commit ${head}) into ${OUT}/`);

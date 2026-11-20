@@ -1177,3 +1177,17 @@ li.unmet .update-item::after { content: "Not met yet · tap to peek"; position: 
   .book-cover { width: 92px; }
   .book-title { font-size: 20px; }
 }
+
+/* ---------- Interactive pages (pages/ folder) ---------- */
+.x-pages { margin: 8px 0 36px; }
+.x-page-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.x-page-list li { position: relative; }
+.x-page { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border: 1px solid var(--faint); border-radius: 10px; background: var(--surface); text-decoration: none; color: var(--text); }
+.x-page:hover { border-color: var(--muted); }
+.x-page-title { font-family: var(--serif); font-size: 18px; font-weight: 600; }
+.x-page-desc { font-family: var(--sans); font-size: 14px; color: var(--muted); }
+main.wiki.interactive { max-width: 1160px; }
+.interactive-frame { display: block; width: 100%; min-height: 70vh; border: 0; border-radius: 10px; background: transparent; }
+.interactive-open { margin: 10px 0 0; font-family: var(--sans); font-size: 13px; text-align: right; }
+.interactive-open a { color: var(--muted); }
+main.wiki.interactive.veiled .interactive-frame, main.wiki.interactive.veiled .interactive-open { display: none; }
